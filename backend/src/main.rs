@@ -19,6 +19,7 @@ use crate::config::Config;
 mod auth;
 mod config;
 mod db;
+mod pull;
 mod push;
 mod storage;
 
@@ -39,9 +40,10 @@ async fn main() {
 }
 
 fn api_router() -> Router {
-  Router::new()
-    .nest("/api", health::router())
-    .nest("/_apis/artifactcache", Router::new().merge(push::router()))
+  Router::new().nest("/api", health::router()).nest(
+    "/_apis/artifactcache",
+    Router::new().merge(push::router()).merge(pull::router()),
+  )
 }
 
 async fn state(mut router: Router, config: Config) -> Router {

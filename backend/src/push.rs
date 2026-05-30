@@ -56,7 +56,7 @@ async fn reserve(
   db.cache_upload()
     .reserve(
       cache_id,
-      req.key,
+      req.key.to_lowercase(),
       req.version,
       req.cache_size,
       auth.repo,
