@@ -111,6 +111,8 @@ async fn upload_chunk(
     db.cache_upload().update_etag(chunk.id, etag).await?;
   }
 
+  db.cache_upload().refresh_created_at(path.id).await?;
+
   Ok(())
 }
 
@@ -129,6 +131,17 @@ async fn commit(
   let parts = db.cache_upload().parts(upload.id).await?;
 
   let size: i64 = parts.iter().map(|part| part.size).sum();
+
+  if let Some(expected_size) = upload.size
+    && expected_size >= 0
+    && size != expected_size
+  {
+    bail!(
+      "Broken file: final size {} does not match reserved size {}",
+      size,
+      expected_size
+    );
+  }
 
   let cache = db.cache_entry().create_cache(upload.clone(), size).await?;
 

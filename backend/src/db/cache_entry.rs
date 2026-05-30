@@ -16,14 +16,15 @@ impl<'db> CacheEntryTable<'db> {
   }
 
   pub async fn create_cache(&self, upload: cache_upload::Model, size: i64) -> Result<i32> {
+    let now = Utc::now().naive_utc();
     let entry = cache_entry::ActiveModel {
       id: Set(upload.id),
       key: Set(upload.key),
       version: Set(upload.version),
       size: Set(size),
-      created_at: Set(Utc::now().naive_utc()),
+      created_at: Set(now),
       repo: Set(upload.repo),
-      used_at: Set(None),
+      used_at: Set(Some(now)),
       write_isolation_key: Set(upload.write_isolation_key),
       complete: Set(false),
     };
@@ -117,7 +118,8 @@ impl<'db> CacheEntryTable<'db> {
         return Ok(Some(entry));
       }
 
-      let wildcard_prefix = format!("{}%", key);
+      let escaped_key = escape_like(key);
+      let wildcard_prefix = format!("{}%", escaped_key);
       let prefix_match = base_query
         .clone()
         .filter(cache_entry::Column::Key.like(wildcard_prefix))
@@ -131,4 +133,10 @@ impl<'db> CacheEntryTable<'db> {
 
     Ok(None)
   }
+}
+
+fn escape_like(s: &str) -> String {
+  s.replace('\\', "\\\\")
+    .replace('%', "\\%")
+    .replace('_', "\\_")
 }

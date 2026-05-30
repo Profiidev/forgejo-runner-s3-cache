@@ -52,6 +52,19 @@ impl<'db> CacheUploadTable<'db> {
   }
 
   pub async fn chunk(&self, id: i32, size: i64, start: i64) -> Result<cache_upload_part::Model> {
+    let existing = cache_upload_part::Entity::find()
+      .filter(cache_upload_part::Column::CacheUpload.eq(id))
+      .filter(cache_upload_part::Column::StartByte.eq(start))
+      .one(self.db)
+      .await?;
+
+    if let Some(model) = existing {
+      let mut model = model.into_active_model();
+      model.size = Set(size);
+      let model = model.update(self.db).await?;
+      return Ok(model);
+    }
+
     let model = cache_upload_part::ActiveModel {
       cache_upload: Set(id),
       id: sea_orm::ActiveValue::NotSet,
@@ -113,5 +126,19 @@ impl<'db> CacheUploadTable<'db> {
         })
         .collect(),
     )
+  }
+
+  pub async fn refresh_created_at(&self, id: i32) -> Result<()> {
+    let mut model = cache_upload::Entity::find_by_id(id)
+      .one(self.db)
+      .await?
+      .context("Cache upload entry not found")?
+      .into_active_model();
+
+    model.created_at = Set(Utc::now().naive_utc());
+
+    model.update(self.db).await?;
+
+    Ok(())
   }
 }
