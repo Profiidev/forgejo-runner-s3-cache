@@ -46,7 +46,11 @@ async fn find(
 
   keys.sort_unstable_by_key(|s| s.len());
 
-  let Some(entry) = db.cache_entry().find_entry(&keys, query.version, auth).await? else {
+  let Some(entry) = db
+    .cache_entry()
+    .find_entry(&keys, query.version, auth)
+    .await?
+  else {
     bail!(NO_CONTENT, "Cache entry not found");
   };
 
