@@ -31,6 +31,12 @@ pub trait StorageExt {
     upload_id: Option<&str>,
     parts: Vec<UploadPart>,
   ) -> Result<()>;
+  async fn cancel_multipart_upload(
+    &self,
+    key: &str,
+    upload_id: Option<&str>,
+    parts: &[i32],
+  ) -> Result<()>;
 }
 
 impl StorageExt for FileStorage {
@@ -143,6 +149,39 @@ impl StorageExt for FileStorage {
         Ok(())
       }
       _ => bail!("Invalid storage configuration for completing multipart upload"),
+    }
+  }
+
+  async fn cancel_multipart_upload(
+    &self,
+    key: &str,
+    upload_id: Option<&str>,
+    parts: &[i32],
+  ) -> Result<()> {
+    match (self, upload_id) {
+      (FileStorage::Local(path), None) => {
+        for part_number in parts {
+          let part_path = path.join(format!("{key}-{part_number}"));
+          if part_path.exists() {
+            fs::remove_file(part_path).await?;
+          }
+        }
+
+        Ok(())
+      }
+      (FileStorage::S3 { client, bucket }, Some(upload_id)) => {
+        client
+          .abort_multipart_upload()
+          .bucket(bucket)
+          .key(key)
+          .upload_id(upload_id)
+          .send()
+          .await
+          .context("Failed to abort multipart upload in S3")?;
+
+        Ok(())
+      }
+      _ => bail!("Invalid storage configuration for cancelling multipart upload"),
     }
   }
 }

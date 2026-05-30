@@ -141,4 +141,26 @@ impl<'db> CacheUploadTable<'db> {
 
     Ok(())
   }
+
+  pub async fn find_incomplete_uploads(
+    &self,
+    before: DateTime,
+  ) -> Result<Vec<(cache_upload::Model, Vec<i32>)>> {
+    let entries = cache_upload::Entity::find()
+      .filter(cache_upload::Column::CreatedAt.lt(before))
+      .find_with_related(cache_upload_part::Entity)
+      .all(self.db)
+      .await?
+      .into_iter()
+      .map(|(upload, parts)| (upload, parts.iter().map(|p| p.part_number).collect()))
+      .collect();
+
+    Ok(entries)
+  }
+
+  pub async fn delete(&self, id: i32) -> Result<()> {
+    cache_upload::Entity::delete_by_id(id).exec(self.db).await?;
+
+    Ok(())
+  }
 }
