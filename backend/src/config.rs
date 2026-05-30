@@ -19,6 +19,7 @@ pub struct Config {
   pub storage: StorageConfig,
 
   pub db_url: String,
+  pub cache_secret: String,
 }
 
 impl Default for Config {
@@ -28,6 +29,7 @@ impl Default for Config {
       db: DBConfig::default(),
       storage: StorageConfig::default(),
       db_url: "".to_string(),
+      cache_secret: "".to_string(),
     }
   }
 }
@@ -50,6 +52,10 @@ impl Config {
     }
 
     config.storage.validate();
+
+    if config.cache_secret.is_empty() {
+      panic!("Cache secret is not set");
+    }
 
     config
   }

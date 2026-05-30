@@ -16,6 +16,7 @@ use tracing::info;
 
 use crate::config::Config;
 
+mod auth;
 mod config;
 mod db;
 mod storage;
@@ -44,10 +45,14 @@ async fn state(mut router: Router, config: Config) -> Router {
   let db = init_db::<migration::Migrator>(&config.db, &config.db_url).await;
 
   router = logging(router, |_| true);
+  router = auth::state(router, &config);
 
   let storage = FileStorage::init(&config.storage)
     .await
     .expect("Failed to initialize storage");
 
-  router.layer(Extension(db)).layer(Extension(storage))
+  router
+    .layer(Extension(db))
+    .layer(Extension(storage))
+    .layer(Extension(config))
 }

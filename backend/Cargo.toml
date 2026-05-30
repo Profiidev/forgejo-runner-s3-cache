@@ -8,6 +8,7 @@ centaurus = { version = "0.13.0", features = [
   "backend",
   "logging",
   "storage",
+  "hmac",
 ], default-features = false }
 uuid = { version = "1.23.1", features = ["v4"] }
 entity = { path = "entity" }
@@ -28,6 +29,9 @@ dotenvy = "0.15.7"
 serde = { version = "1.0.228", features = ["derive"] }
 figment = { version = "0.10.19", features = ["env"] }
 hyper-util = { version = "0.1.20", features = ["client-legacy"] }
+hmac = "0.13.0"
+sha2 = "0.11.0"
+hex = "0.4.3"
 
 [[bin]]
 name = "backend"
