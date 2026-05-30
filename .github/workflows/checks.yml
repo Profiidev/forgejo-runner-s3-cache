@@ -1,0 +1,43 @@
+name: Checks and Validation
+on:
+  pull_request:
+
+jobs:
+  linters:
+    name: Run linters
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: write
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache cargo and rust files
+        id: rust_cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          cache-on-failure: true
+          shared-key: "linter_cache"
+      - uses: bahmutov/npm-install@v1
+
+      - name: Generate svelte data
+        run: |
+          echo "BACKEND_URL=http://localhost:8000" > frontend/.env
+          cd frontend && npm run sync
+
+      - name: Run linters
+        uses: profiidev/rust-lint-action@ec3bf81f84ae2a9834fce8967d0eabe852227ff9 # v4
+        with:
+          rustfmt: true
+          clippy: true
+          auto_fix: true
+          git_sign_commits: true
+          github_token: ${{ steps.app-token.outputs.token }}

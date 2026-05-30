@@ -1,0 +1,30 @@
+[package]
+name = "backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+centaurus = { version = "0.12.2", features = ["backend", "logging"], default-features = false }
+uuid = { version = "1.23.1", features = ["v4"] }
+entity = { path = "entity" }
+migration = { path = "migration" }
+sea-orm = { version = "1.1.20", features = [
+  "sqlx-postgres",
+  "sqlx-sqlite",
+  "runtime-tokio-rustls",
+] }
+axum = { version = "0.8.9", features = ["macros", "ws", "tracing"] }
+axum-extra = { version = "0.12.6", features = ["cookie", "typed-header"] }
+tracing = "0.1.44"
+tower = "0.5.3"
+tower-http = { version = "0.6.11", features = ["cors", "trace"] }
+tokio = { version = "1.52.3", features = ["signal"] }
+http = "1.4.1"
+dotenvy = "0.15.7"
+serde = { version = "1.0.228", features = ["derive"] }
+figment = { version = "0.10.19", features = ["env"] }
+hyper-util = { version = "0.1.20", features = ["client-legacy"] }
+
+[[bin]]
+name = "backend"
+path = "src/main.rs"

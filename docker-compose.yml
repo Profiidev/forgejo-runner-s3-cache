@@ -1,0 +1,40 @@
+services:
+  backend:
+    image: ghcr.io/profiidev/images/rust-musl-watch:main@sha256:0d38b2e2239495eb551af4208acf213e40e551489ec8ca9386d16db987f21a61
+    user: '${HOST_UID:-0}:${HOST_GID:-0}'
+    volumes:
+      - ./backend:/app
+    networks:
+      - nginx
+    tty: true
+    ports:
+      - '5173:8000'
+    entrypoint: ['tini', '--']
+    command: ['cargo', 'watch', '-x', 'run']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39
+    restart: unless-stopped
+    volumes:
+      - ./postgres:/var/lib/postgresql
+    environment:
+      - POSTGRES_PASSWORD=test
+      - POSTGRES_USER=test
+      - POSTGRES_DB=test
+    networks:
+      - nginx
+    ports:
+      - '9301:5432'
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', 'test']
+      interval: 60s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+
+networks:
+  nginx:

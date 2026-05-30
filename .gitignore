@@ -1,0 +1,7 @@
+target
+.env
+node_modules
+backend/Cargo.lock
+postgres/
+/test/
+/result

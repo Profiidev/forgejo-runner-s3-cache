@@ -1,0 +1,169 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build Backend
+    runs-on: ${{ matrix.runner }}
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    strategy:
+      matrix:
+        item: [{ df_path: ./, image: "proxy" }]
+        platform: ["linux/amd64", "linux/arm64"]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          FULL_IMAGE_NAME="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.item.image }}"
+          echo "IMAGE=$(echo $FULL_IMAGE_NAME | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: Login to DockerHub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.IMAGE }}
+
+      - name: Build and push
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        id: push
+        with:
+          platforms: ${{ matrix.platform }}
+          context: ./
+          file: ${{ matrix.item.df_path }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.IMAGE }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=image${{ github.event_name != 'pull_request' && ',push=true,push-by-digest=true,name-canonical=true' || '' }}
+
+      - name: Export digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p ${{ runner.temp }}/digests/${{ matrix.item.image }}
+          digest="${{ steps.push.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${{ matrix.item.image }}/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: github.event_name != 'pull_request'
+        with:
+          name: digests-${{ matrix.item.image }}-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/${{ matrix.item.image }}/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  merge:
+    name: Merge Manifests
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        item: [{ image: "proxy" }]
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Prepare
+        run: |
+          FULL_IMAGE_NAME="${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.item.image }}"
+          echo "IMAGE=$(echo $FULL_IMAGE_NAME | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: ${{ runner.temp }}/digests/${{ matrix.item.image }}
+          pattern: digests-${{ matrix.item.image }}-*
+          merge-multiple: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6
+        with:
+          images: ${{ env.IMAGE }}
+
+      - name: Create and push manifest list
+        working-directory: ${{ runner.temp }}/digests/${{ matrix.item.image }}
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+                     $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ${{ env.IMAGE }}:${{ steps.meta.outputs.version }}
+
+  trigger:
+    runs-on: ubuntu-latest
+    needs:
+      - merge
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: helm-charts
+      - name: trigger helm chart bump workflow
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
+        with:
+          event-type: bump-chart
+          repository: profiidev/helm-charts
+          token: ${{ steps.app-token.outputs.token }}
+          client-payload: '{"chart_name": "forgejo-runner-s3-cache", "chart_version": "${{ github.ref_name }}" }'
