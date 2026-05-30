@@ -1,6 +1,13 @@
 use centaurus::db::init::Connection;
 
-#[allow(unused)]
-pub trait DBTrait {}
+mod cache_upload;
 
-impl DBTrait for Connection {}
+pub trait DBTrait {
+  fn cache_upload(&self) -> cache_upload::CacheUploadTable<'_>;
+}
+
+impl DBTrait for Connection {
+  fn cache_upload(&self) -> cache_upload::CacheUploadTable<'_> {
+    cache_upload::CacheUploadTable::new(self)
+  }
+}

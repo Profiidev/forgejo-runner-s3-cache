@@ -19,6 +19,7 @@ use crate::config::Config;
 mod auth;
 mod config;
 mod db;
+mod push;
 mod storage;
 
 #[tokio::main]
@@ -38,7 +39,9 @@ async fn main() {
 }
 
 fn api_router() -> Router {
-  Router::new().nest("/api", health::router())
+  Router::new()
+    .nest("/api", health::router())
+    .nest("/_apis/artifactcache", Router::new().merge(push::router()))
 }
 
 async fn state(mut router: Router, config: Config) -> Router {

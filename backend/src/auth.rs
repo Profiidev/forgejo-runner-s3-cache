@@ -23,7 +23,6 @@ struct AuthSecret(String);
 
 pub struct Auth {
   pub repo: String,
-  pub run_number: String,
   pub write_isolation_key: String,
 }
 
@@ -62,7 +61,6 @@ impl<S: Sync> FromRequestParts<S> for Auth {
 
     Ok(Self {
       repo,
-      run_number,
       write_isolation_key,
     })
   }
