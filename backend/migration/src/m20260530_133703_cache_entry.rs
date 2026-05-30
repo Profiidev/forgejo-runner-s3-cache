@@ -18,7 +18,7 @@ impl MigrationTrait for Migration {
           .col(string(CacheEntry::WriteIsolationKey))
           .col(big_integer(CacheEntry::Size))
           .col(date_time(CacheEntry::CreatedAt))
-          .col(date_time_null(CacheEntry::UsedAt))
+          .col(date_time(CacheEntry::UsedAt))
           .col(boolean(CacheEntry::Complete))
           .to_owned(),
       )

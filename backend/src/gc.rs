@@ -14,12 +14,21 @@ pub fn state(router: Router, db: Connection, storage: FileStorage) -> Router {
 
 #[derive(Clone)]
 struct Gc {
+  _unused_entry: Arc<JoinHandle<()>>,
   _incomplete_entry: Arc<JoinHandle<()>>,
   _upload: Arc<JoinHandle<()>>,
 }
 
 impl Gc {
   pub fn init(db: Connection, storage: FileStorage) -> Self {
+    let unused_entry = spawn({
+      let db = db.clone();
+      let storage = storage.clone();
+      async move {
+        unused_entry_gc(db, storage).await;
+      }
+    });
+
     let incomplete_entry = spawn({
       let db = db.clone();
       async move {
@@ -36,14 +45,49 @@ impl Gc {
     });
 
     Gc {
+      _unused_entry: Arc::new(unused_entry),
       _incomplete_entry: Arc::new(incomplete_entry),
       _upload: Arc::new(upload),
     }
   }
 }
 
+async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
+  loop {
+    info!("Running GC for unused cache entries");
+    // cleanup entries that haven't been used for more than 7 days
+    let before = Utc::now() - Duration::days(7);
+    let Ok(entries) = db
+      .cache_entry()
+      .find_unused_entries(before.naive_utc())
+      .await
+      .map_err(|e| {
+        warn!("Failed to query unused cache entries for GC: {e}");
+      })
+    else {
+      continue;
+    };
+
+    info!("Found {} unused cache entries for GC", entries.len());
+
+    for entry in entries {
+      if let Err(e) = storage.delete_file(&entry.id.to_string()).await {
+        warn!("Failed to delete unused cache object for GC: {e}");
+        continue;
+      }
+
+      if let Err(e) = db.cache_entry().delete_by_id(entry.id).await {
+        warn!("Failed to delete unused cache entry for GC: {e}");
+      }
+    }
+
+    sleep(Duration::hours(1).to_std().unwrap()).await;
+  }
+}
+
 async fn incomplete_entry_gc(db: Connection) -> ! {
   loop {
+    info!("Running GC for incomplete cache entries");
     // cleanup incomplete entries that failed to be marked complete for more than 5 minutes
     let before = Utc::now() - Duration::minutes(5);
     if let Err(e) = db
@@ -60,6 +104,7 @@ async fn incomplete_entry_gc(db: Connection) -> ! {
 
 async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
   loop {
+    info!("Running GC for incomplete uploads");
     // cleanup uploads that didn't receive a new part for more than 5 minutes
     let before = Utc::now() - Duration::minutes(5);
     let Ok(uploads) = db

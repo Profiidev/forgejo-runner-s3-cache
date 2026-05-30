@@ -24,7 +24,7 @@ impl<'db> CacheEntryTable<'db> {
       size: Set(size),
       created_at: Set(now),
       repo: Set(upload.repo),
-      used_at: Set(Some(now)),
+      used_at: Set(now),
       write_isolation_key: Set(upload.write_isolation_key),
       complete: Set(false),
     };
@@ -65,7 +65,7 @@ impl<'db> CacheEntryTable<'db> {
     let model = self.find(id).await?;
 
     let mut model = model.into_active_model();
-    model.used_at = Set(Some(Utc::now().naive_utc()));
+    model.used_at = Set(Utc::now().naive_utc());
     model.update(self.db).await?;
 
     Ok(())
@@ -134,6 +134,12 @@ impl<'db> CacheEntryTable<'db> {
     Ok(None)
   }
 
+  pub async fn delete_by_id(&self, id: i32) -> Result<()> {
+    cache_entry::Entity::delete_by_id(id).exec(self.db).await?;
+
+    Ok(())
+  }
+
   pub async fn clean_incomplete_entries(&self, before: DateTime) -> Result<()> {
     cache_entry::Entity::delete_many()
       .filter(cache_entry::Column::Complete.eq(false))
@@ -142,6 +148,16 @@ impl<'db> CacheEntryTable<'db> {
       .await?;
 
     Ok(())
+  }
+
+  pub async fn find_unused_entries(&self, before: DateTime) -> Result<Vec<cache_entry::Model>> {
+    let entries = cache_entry::Entity::find()
+      .filter(cache_entry::Column::UsedAt.lt(before))
+      .filter(cache_entry::Column::Complete.eq(true))
+      .all(self.db)
+      .await?;
+
+    Ok(entries)
   }
 }
 
