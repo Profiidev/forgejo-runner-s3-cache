@@ -1,6 +1,7 @@
 use axum::{Extension, Router};
 use centaurus::{
   backend::{
+    endpoints::health,
     init::{listener_setup, run_app_connect_info},
     middleware::logging::logging,
   },
@@ -34,7 +35,7 @@ async fn main() {
 }
 
 fn api_router() -> Router {
-  Router::new()
+  Router::new().nest("/api", health::router())
 }
 
 async fn state(mut router: Router, config: Config) -> Router {
