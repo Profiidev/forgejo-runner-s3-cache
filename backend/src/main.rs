@@ -7,6 +7,7 @@ use centaurus::{
   },
   db::init::init_db,
   logging::init_logging,
+  storage::FileStorage,
   version_header,
 };
 #[cfg(debug_assertions)]
@@ -15,8 +16,12 @@ use tracing::info;
 
 use crate::config::Config;
 
+mod auth;
 mod config;
 mod db;
+mod pull;
+mod push;
+mod storage;
 
 #[tokio::main]
 async fn main() {
@@ -35,13 +40,24 @@ async fn main() {
 }
 
 fn api_router() -> Router {
-  Router::new().nest("/api", health::router())
+  Router::new().nest("/api", health::router()).nest(
+    "/_apis/artifactcache",
+    Router::new().merge(push::router()).merge(pull::router()),
+  )
 }
 
 async fn state(mut router: Router, config: Config) -> Router {
   let db = init_db::<migration::Migrator>(&config.db, &config.db_url).await;
 
   router = logging(router, |_| true);
+  router = auth::state(router, &config);
 
-  router.layer(Extension(db))
+  let storage = FileStorage::init(&config.storage)
+    .await
+    .expect("Failed to initialize storage");
+
+  router
+    .layer(Extension(db))
+    .layer(Extension(storage))
+    .layer(Extension(config))
 }
