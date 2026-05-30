@@ -13,34 +13,45 @@ impl<'db> CacheUploadTable<'db> {
     Self { db }
   }
 
-  #[allow(clippy::too_many_arguments)]
   pub async fn reserve(
     &self,
-    id: Uuid,
     key: String,
     version: String,
     size: Option<i64>,
     repo: String,
     write_isolation_key: String,
-    s3_upload_id: Option<String>,
-  ) -> Result<()> {
+  ) -> Result<i32> {
     let entry = cache_upload::ActiveModel {
-      id: Set(id),
       key: Set(key),
       version: Set(version),
       size: Set(size),
       created_at: Set(Utc::now().naive_utc()),
       repo: Set(repo),
       write_isolation_key: Set(write_isolation_key),
-      s3_upload_id: Set(s3_upload_id),
+      id: sea_orm::ActiveValue::NotSet,
+      s3_upload_id: sea_orm::ActiveValue::NotSet,
     };
 
-    entry.insert(self.db).await?;
+    let model = entry.insert(self.db).await?;
+
+    Ok(model.id)
+  }
+
+  pub async fn set_s3_upload_id(&self, id: i32, s3_upload_id: String) -> Result<()> {
+    let mut model = cache_upload::Entity::find_by_id(id)
+      .one(self.db)
+      .await?
+      .context("Cache upload entry not found")?
+      .into_active_model();
+
+    model.s3_upload_id = Set(Some(s3_upload_id));
+
+    model.update(self.db).await?;
 
     Ok(())
   }
 
-  pub async fn chunk(&self, id: Uuid, size: i64, start: i64) -> Result<cache_upload_part::Model> {
+  pub async fn chunk(&self, id: i32, size: i64, start: i64) -> Result<cache_upload_part::Model> {
     let model = cache_upload_part::ActiveModel {
       cache_upload: Set(id),
       id: sea_orm::ActiveValue::NotSet,
@@ -52,7 +63,8 @@ impl<'db> CacheUploadTable<'db> {
 
     let model = model.insert(self.db).await?;
 
-    let part_number = model.id % 10000;
+    // S3 part number
+    let part_number = (model.id % 10000) as i32 + 1;
 
     let mut model = model.into_active_model();
     model.part_number = Set(part_number);
@@ -75,7 +87,7 @@ impl<'db> CacheUploadTable<'db> {
     Ok(())
   }
 
-  pub async fn find(&self, id: Uuid) -> Result<cache_upload::Model> {
+  pub async fn find(&self, id: i32) -> Result<cache_upload::Model> {
     let entry = cache_upload::Entity::find_by_id(id)
       .one(self.db)
       .await?
@@ -84,7 +96,7 @@ impl<'db> CacheUploadTable<'db> {
     Ok(entry)
   }
 
-  pub async fn parts(&self, id: Uuid) -> Result<Vec<UploadPart>> {
+  pub async fn parts(&self, id: i32) -> Result<Vec<UploadPart>> {
     let parts = cache_upload_part::Entity::find()
       .filter(cache_upload_part::Column::CacheUpload.eq(id))
       .all(self.db)

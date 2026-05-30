@@ -11,7 +11,7 @@ impl MigrationTrait for Migration {
         Table::create()
           .table(CacheEntry::Table)
           .if_not_exists()
-          .col(pk_uuid(CacheEntry::Id))
+          .col(pk_auto(CacheEntry::Id))
           .col(string(CacheEntry::Repo))
           .col(string(CacheEntry::Key))
           .col(string(CacheEntry::Version))

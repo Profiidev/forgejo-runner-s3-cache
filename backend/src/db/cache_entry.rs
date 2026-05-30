@@ -15,7 +15,7 @@ impl<'db> CacheEntryTable<'db> {
     Self { db }
   }
 
-  pub async fn create_cache(&self, upload: cache_upload::Model, size: i64) -> Result<Uuid> {
+  pub async fn create_cache(&self, upload: cache_upload::Model, size: i64) -> Result<i32> {
     let entry = cache_entry::ActiveModel {
       id: Set(upload.id),
       key: Set(upload.key),
@@ -33,13 +33,13 @@ impl<'db> CacheEntryTable<'db> {
     Ok(model.id)
   }
 
-  pub async fn find_by_id(&self, id: Uuid) -> Result<Option<cache_entry::Model>> {
+  pub async fn find_by_id(&self, id: i32) -> Result<Option<cache_entry::Model>> {
     let model = cache_entry::Entity::find_by_id(id).one(self.db).await?;
 
     Ok(model)
   }
 
-  async fn find(&self, id: Uuid) -> Result<cache_entry::Model> {
+  async fn find(&self, id: i32) -> Result<cache_entry::Model> {
     let model = cache_entry::Entity::find_by_id(id)
       .one(self.db)
       .await?
@@ -48,17 +48,19 @@ impl<'db> CacheEntryTable<'db> {
     Ok(model)
   }
 
-  pub async fn complete(&self, id: Uuid) -> Result<()> {
+  pub async fn complete(&self, id: i32) -> Result<()> {
     let model = self.find(id).await?;
 
     let mut model = model.into_active_model();
     model.complete = Set(true);
     model.update(self.db).await?;
 
+    cache_upload::Entity::delete_by_id(id).exec(self.db).await?;
+
     Ok(())
   }
 
-  pub async fn update_used_at(&self, id: Uuid) -> Result<()> {
+  pub async fn update_used_at(&self, id: i32) -> Result<()> {
     let model = self.find(id).await?;
 
     let mut model = model.into_active_model();
@@ -115,7 +117,7 @@ impl<'db> CacheEntryTable<'db> {
         return Ok(Some(entry));
       }
 
-      let wildcard_prefix = format!("{}%s", key);
+      let wildcard_prefix = format!("{}%", key);
       let prefix_match = base_query
         .clone()
         .filter(cache_entry::Column::Key.like(wildcard_prefix))

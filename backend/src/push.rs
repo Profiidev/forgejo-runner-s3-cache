@@ -7,7 +7,6 @@ use axum::{
 use axum_extra::{TypedHeader, headers::ContentRange};
 use centaurus::{bail, db::init::Connection, error::Result, storage::FileStorage};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{auth::Auth, db::DBTrait, storage::StorageExt};
 
@@ -30,7 +29,7 @@ struct ReserveRequest {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReserveResponse {
-  cache_id: Uuid,
+  cache_id: i32,
 }
 
 async fn reserve(
@@ -47,30 +46,33 @@ async fn reserve(
     }
   }
 
-  let cache_id = Uuid::new_v4();
-
-  let upload_id = storage
-    .create_multipart_upload(&cache_id.to_string())
-    .await?;
-
-  db.cache_upload()
+  let cache_id = db
+    .cache_upload()
     .reserve(
-      cache_id,
       req.key.to_lowercase(),
       req.version,
       req.cache_size,
       auth.repo,
       auth.write_isolation_key,
-      upload_id,
     )
     .await?;
+
+  let upload_id = storage
+    .create_multipart_upload(&cache_id.to_string())
+    .await?;
+
+  if let Some(upload_id) = upload_id {
+    db.cache_upload()
+      .set_s3_upload_id(cache_id, upload_id)
+      .await?;
+  }
 
   Ok(Json(ReserveResponse { cache_id }))
 }
 
 #[derive(Deserialize)]
 struct UploadChunkPath {
-  id: Uuid,
+  id: i32,
 }
 
 async fn upload_chunk(

@@ -7,13 +7,12 @@ use axum::{
 use centaurus::{bail, db::init::Connection, error::Result, storage::FileStorage};
 use http::HeaderMap;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{auth::Auth, db::DBTrait};
 
 pub fn router() -> Router {
   Router::new()
-    .route("cache", get(find))
+    .route("/cache", get(find))
     .route("/artifacts/{id}", get(download))
 }
 
@@ -37,14 +36,12 @@ async fn find(
   db: Connection,
   headers: HeaderMap,
 ) -> Result<Json<FindResult>> {
-  let mut keys = query
+  let keys = query
     .keys
     .split(',')
     .map(|s| s.trim().to_lowercase())
     .filter(|s| !s.is_empty())
     .collect::<Vec<_>>();
-
-  keys.sort_unstable_by_key(|s| s.len());
 
   let Some(entry) = db
     .cache_entry()
@@ -76,7 +73,7 @@ async fn find(
 
 #[derive(Deserialize)]
 struct DownloadPath {
-  id: Uuid,
+  id: i32,
 }
 
 async fn download(
