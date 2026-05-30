@@ -133,6 +133,16 @@ impl<'db> CacheEntryTable<'db> {
 
     Ok(None)
   }
+
+  pub async fn clean_incomplete_entries(&self, before: DateTime) -> Result<()> {
+    cache_entry::Entity::delete_many()
+      .filter(cache_entry::Column::Complete.eq(false))
+      .filter(cache_entry::Column::CreatedAt.lt(before))
+      .exec(self.db)
+      .await?;
+
+    Ok(())
+  }
 }
 
 fn escape_like(s: &str) -> String {

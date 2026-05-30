@@ -14,11 +14,19 @@ pub fn state(router: Router, db: Connection, storage: FileStorage) -> Router {
 
 #[derive(Clone)]
 struct Gc {
+  _incomplete_entry: Arc<JoinHandle<()>>,
   _upload: Arc<JoinHandle<()>>,
 }
 
 impl Gc {
   pub fn init(db: Connection, storage: FileStorage) -> Self {
+    let incomplete_entry = spawn({
+      let db = db.clone();
+      async move {
+        incomplete_entry_gc(db).await;
+      }
+    });
+
     let upload = spawn({
       let db = db.clone();
       let storage = storage.clone();
@@ -28,8 +36,25 @@ impl Gc {
     });
 
     Gc {
+      _incomplete_entry: Arc::new(incomplete_entry),
       _upload: Arc::new(upload),
     }
+  }
+}
+
+async fn incomplete_entry_gc(db: Connection) -> ! {
+  loop {
+    // cleanup incomplete entries that failed to be marked complete for more than 5 minutes
+    let before = Utc::now() - Duration::minutes(5);
+    if let Err(e) = db
+      .cache_entry()
+      .clean_incomplete_entries(before.naive_utc())
+      .await
+    {
+      warn!("Failed to delete incomplete cache entries for GC: {e}");
+    }
+
+    sleep(Duration::minutes(5).to_std().unwrap()).await;
   }
 }
 
