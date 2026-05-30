@@ -104,6 +104,8 @@ async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
       continue;
     };
 
+    info!("Found {} unused cache entries for GC", entries.len());
+
     delete_entries(&db, &storage, entries).await;
 
     sleep(Duration::hours(1).to_std().unwrap()).await;
@@ -111,8 +113,6 @@ async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
 }
 
 async fn delete_entries(db: &Connection, storage: &FileStorage, entries: Vec<cache_entry::Model>) {
-  info!("Found {} cache entries for GC", entries.len());
-
   for entry in entries {
     let Ok(exists) = storage.exists(&entry.id.to_string()).await.map_err(|e| {
       warn!("Failed to check cache object existence for GC: {e}");
