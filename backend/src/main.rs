@@ -7,6 +7,7 @@ use centaurus::{
   },
   db::init::init_db,
   logging::init_logging,
+  storage::FileStorage,
   version_header,
 };
 #[cfg(debug_assertions)]
@@ -17,6 +18,7 @@ use crate::config::Config;
 
 mod config;
 mod db;
+mod storage;
 
 #[tokio::main]
 async fn main() {
@@ -43,5 +45,9 @@ async fn state(mut router: Router, config: Config) -> Router {
 
   router = logging(router, |_| true);
 
-  router.layer(Extension(db))
+  let storage = FileStorage::init(&config.storage)
+    .await
+    .expect("Failed to initialize storage");
+
+  router.layer(Extension(db)).layer(Extension(storage))
 }

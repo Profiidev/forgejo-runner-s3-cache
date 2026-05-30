@@ -46,14 +46,15 @@ RUN \
   cd backend && cargo build --release --target $TARGET \
   && mv ../target/$TARGET/release/backend ../app
 
-RUN mkdir -p /tmp/data
+RUN mkdir -p /tmp/data/storage
 
 FROM scratch
 
 ENV DB_URL="sqlite:/data/forgejo-runner-s3-cache.db?mode=rwc"
+ENV STORAGE_PATH="/data/storage"
 
 COPY --from=backend-builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=backend-builder /tmp/data /data
+COPY --from=backend-builder /tmp/data /data/storage
 
 WORKDIR /app
 COPY --from=backend-builder /app/app /usr/local/bin/forgejo-runner-s3-cache

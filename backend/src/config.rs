@@ -1,4 +1,6 @@
-use centaurus::{Config, backend::config::BaseConfig, db::config::DBConfig};
+use centaurus::{
+  Config, backend::config::BaseConfig, db::config::DBConfig, storage::StorageConfig,
+};
 use figment::{
   Figment,
   providers::{Env, Serialized},
@@ -13,6 +15,8 @@ pub struct Config {
   pub base: BaseConfig,
   #[serde(flatten)]
   pub db: DBConfig,
+  #[serde(flatten)]
+  pub storage: StorageConfig,
 
   pub db_url: String,
 }
@@ -22,6 +26,7 @@ impl Default for Config {
     Self {
       base: BaseConfig::default(),
       db: DBConfig::default(),
+      storage: StorageConfig::default(),
       db_url: "".to_string(),
     }
   }
@@ -43,6 +48,8 @@ impl Config {
     if config.db_url.starts_with("sqlite") {
       config.db.validate_sqlite();
     }
+
+    config.storage.validate();
 
     config
   }

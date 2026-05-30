@@ -9,7 +9,7 @@ name = "migration"
 path = "src/lib.rs"
 
 [dependencies]
-centaurus = { version = "0.12.2", default-features = false, features = ["db"] }
+centaurus = { version = "0.13.0", default-features = false, features = ["db"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [dependencies.sea-orm-migration]
