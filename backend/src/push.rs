@@ -15,6 +15,8 @@ pub fn router() -> Router {
   Router::new()
     .route("/caches", post(reserve))
     .route("/caches/{id}", patch(upload_chunk))
+    .route("/caches/{id}", post(commit))
+    .route("/clean", post(clean))
 }
 
 #[derive(Deserialize)]
@@ -107,5 +109,40 @@ async fn upload_chunk(
     db.cache_upload().update_etag(chunk.id, etag).await?;
   }
 
+  Ok(())
+}
+
+async fn commit(
+  auth: Auth,
+  storage: FileStorage,
+  db: Connection,
+  Path(path): Path<UploadChunkPath>,
+) -> Result<()> {
+  let upload = db.cache_upload().find(path.id).await?;
+
+  if auth.write_isolation_key != upload.write_isolation_key {
+    bail!(FORBIDDEN, "Write isolation key does not match");
+  }
+
+  let parts = db.cache_upload().parts(upload.id).await?;
+
+  let size: i64 = parts.iter().map(|part| part.size).sum();
+
+  let cache = db.cache_entry().create_cache(upload.clone(), size).await?;
+
+  storage
+    .complete_multipart_upload(
+      &upload.id.to_string(),
+      upload.s3_upload_id.as_deref(),
+      parts,
+    )
+    .await?;
+
+  db.cache_entry().complete(cache).await?;
+
+  Ok(())
+}
+
+async fn clean(_auth: Auth) -> Result<()> {
   Ok(())
 }

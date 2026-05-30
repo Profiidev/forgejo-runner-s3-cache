@@ -2,6 +2,8 @@ use centaurus::{error::Result, eyre::ContextCompat};
 use entity::{cache_upload, cache_upload_part};
 use sea_orm::{ActiveValue::Set, IntoActiveModel, prelude::*, sqlx::types::chrono::Utc};
 
+use crate::storage::UploadPart;
+
 pub struct CacheUploadTable<'db> {
   db: &'db DatabaseConnection,
 }
@@ -80,5 +82,24 @@ impl<'db> CacheUploadTable<'db> {
       .context("Cache upload entry not found")?;
 
     Ok(entry)
+  }
+
+  pub async fn parts(&self, id: Uuid) -> Result<Vec<UploadPart>> {
+    let parts = cache_upload_part::Entity::find()
+      .filter(cache_upload_part::Column::CacheUpload.eq(id))
+      .all(self.db)
+      .await?;
+
+    Ok(
+      parts
+        .into_iter()
+        .map(|part| UploadPart {
+          start_byte: part.start_byte,
+          part_number: part.part_number,
+          etag: part.e_tag,
+          size: part.size,
+        })
+        .collect(),
+    )
   }
 }

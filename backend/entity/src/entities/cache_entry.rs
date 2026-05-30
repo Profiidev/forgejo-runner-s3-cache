@@ -14,6 +14,7 @@ pub struct Model {
   pub size: i64,
   pub created_at: DateTime,
   pub used_at: Option<DateTime>,
+  pub complete: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

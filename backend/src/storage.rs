@@ -7,7 +7,14 @@ use centaurus::{
   storage::FileStorage,
 };
 use http::StatusCode;
-use tokio::fs;
+use tokio::{fs, io};
+
+pub struct UploadPart {
+  pub start_byte: i64,
+  pub part_number: i32,
+  pub etag: Option<String>,
+  pub size: i64,
+}
 
 pub trait StorageExt {
   async fn create_multipart_upload(&self, key: &str) -> Result<Option<String>>;
@@ -18,6 +25,12 @@ pub trait StorageExt {
     part_number: i32,
     data: Bytes,
   ) -> Result<Option<String>>;
+  async fn complete_multipart_upload(
+    &self,
+    key: &str,
+    upload_id: Option<&str>,
+    parts: Vec<UploadPart>,
+  ) -> Result<()>;
 }
 
 impl StorageExt for FileStorage {
@@ -77,6 +90,59 @@ impl StorageExt for FileStorage {
         Ok(Some(etag))
       }
       _ => bail!("Invalid storage configuration for multipart upload"),
+    }
+  }
+
+  async fn complete_multipart_upload(
+    &self,
+    key: &str,
+    upload_id: Option<&str>,
+    mut parts: Vec<UploadPart>,
+  ) -> Result<()> {
+    parts.sort_unstable_by_key(|part| part.start_byte);
+
+    match (self, upload_id) {
+      (FileStorage::Local(path), None) => {
+        let mut file = fs::File::create(path.join(key)).await?;
+
+        for part in parts {
+          let part_path = path.join(format!("{key}-{}", part.part_number));
+          let mut part = fs::File::open(&part_path).await?;
+          io::copy(&mut part, &mut file).await?;
+          drop(part);
+          fs::remove_file(part_path).await?;
+        }
+
+        Ok(())
+      }
+      (FileStorage::S3 { client, bucket }, Some(upload_id)) => {
+        let completed_parts = parts
+          .into_iter()
+          .map(|part| {
+            aws_sdk_s3::types::CompletedPart::builder()
+              .set_e_tag(part.etag)
+              .part_number(part.part_number)
+              .build()
+          })
+          .collect();
+
+        client
+          .complete_multipart_upload()
+          .bucket(bucket)
+          .key(key)
+          .upload_id(upload_id)
+          .multipart_upload(
+            aws_sdk_s3::types::CompletedMultipartUpload::builder()
+              .set_parts(Some(completed_parts))
+              .build(),
+          )
+          .send()
+          .await
+          .context("Failed to complete multipart upload in S3")?;
+
+        Ok(())
+      }
+      _ => bail!("Invalid storage configuration for completing multipart upload"),
     }
   }
 }

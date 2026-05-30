@@ -26,12 +26,6 @@ jobs:
         with:
           cache-on-failure: true
           shared-key: "linter_cache"
-      - uses: bahmutov/npm-install@v1
-
-      - name: Generate svelte data
-        run: |
-          echo "BACKEND_URL=http://localhost:8000" > frontend/.env
-          cd frontend && npm run sync
 
       - name: Run linters
         uses: profiidev/rust-lint-action@ec3bf81f84ae2a9834fce8967d0eabe852227ff9 # v4
