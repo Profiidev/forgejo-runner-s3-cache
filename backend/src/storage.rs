@@ -167,17 +167,23 @@ impl StorageExt for FileStorage {
           }
         }
 
+        // also remove the final file if it exists, since the upload is cancelled
+        let file_path = path.join(key);
+        if file_path.exists() {
+          fs::remove_file(file_path).await?;
+        }
+
         Ok(())
       }
       (FileStorage::S3 { client, bucket }, Some(upload_id)) => {
-        client
+        let _ = client
           .abort_multipart_upload()
           .bucket(bucket)
           .key(key)
           .upload_id(upload_id)
           .send()
           .await
-          .context("Failed to abort multipart upload in S3")?;
+          .context("Failed to abort multipart upload in S3");
 
         Ok(())
       }

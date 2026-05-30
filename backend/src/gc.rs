@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::{Extension, Router};
 use centaurus::{db::init::Connection, storage::FileStorage};
 use chrono::{Duration, Utc};
+use entity::cache_entry;
 use tokio::{spawn, task::JoinHandle, time::sleep};
 use tracing::{info, warn};
 
@@ -40,8 +41,9 @@ impl Gc {
 
     let incomplete_entry = spawn({
       let db = db.clone();
+      let storage = storage.clone();
       async move {
-        incomplete_entry_gc(db).await;
+        incomplete_entry_gc(db, storage).await;
       }
     });
 
@@ -80,16 +82,9 @@ async fn entry_gc(db: Connection, storage: FileStorage) -> ! {
 
     info!("Found {} cache entries for GC", entries.len());
 
-    for entry in entries {
-      if let Err(e) = storage.delete_file(&entry.id.to_string()).await {
-        warn!("Failed to delete cache object for GC: {e}");
-        continue;
-      }
+    delete_entries(&db, &storage, entries).await;
 
-      if let Err(e) = db.cache_entry().delete_by_id(entry.id).await {
-        warn!("Failed to delete cache entry for GC: {e}");
-      }
-    }
+    sleep(Duration::hours(24).to_std().unwrap()).await;
   }
 }
 
@@ -109,45 +104,64 @@ async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
       continue;
     };
 
-    info!("Found {} unused cache entries for GC", entries.len());
-
-    for entry in entries {
-      if let Err(e) = storage.delete_file(&entry.id.to_string()).await {
-        warn!("Failed to delete unused cache object for GC: {e}");
-        continue;
-      }
-
-      if let Err(e) = db.cache_entry().delete_by_id(entry.id).await {
-        warn!("Failed to delete unused cache entry for GC: {e}");
-      }
-    }
+    delete_entries(&db, &storage, entries).await;
 
     sleep(Duration::hours(1).to_std().unwrap()).await;
   }
 }
 
-async fn incomplete_entry_gc(db: Connection) -> ! {
-  loop {
-    info!("Running GC for incomplete cache entries");
-    // cleanup incomplete entries that failed to be marked complete for more than 5 minutes
-    let before = Utc::now() - Duration::minutes(5);
-    if let Err(e) = db
-      .cache_entry()
-      .clean_incomplete_entries(before.naive_utc())
+async fn delete_entries(db: &Connection, storage: &FileStorage, entries: Vec<cache_entry::Model>) {
+  info!("Found {} cache entries for GC", entries.len());
+
+  for entry in entries {
+    if storage
+      .exists(&entry.id.to_string())
       .await
+      .map_err(|e| {
+        warn!("Failed to check cache object existence for GC: {e}");
+      })
+      .unwrap_or(false)
+      && let Err(e) = storage.delete_file(&entry.id.to_string()).await
     {
-      warn!("Failed to delete incomplete cache entries for GC: {e}");
+      warn!("Failed to delete cache object for GC: {e}");
+      continue;
     }
 
-    sleep(Duration::minutes(5).to_std().unwrap()).await;
+    if let Err(e) = db.cache_entry().delete_by_id(entry.id).await {
+      warn!("Failed to delete cache entry for GC: {e}");
+    }
+  }
+}
+
+async fn incomplete_entry_gc(db: Connection, storage: FileStorage) -> ! {
+  loop {
+    info!("Running GC for incomplete cache entries");
+    // cleanup incomplete entries that failed to be marked complete for more than 10 minutes
+    let before = Utc::now() - Duration::minutes(10);
+    let Ok(entries) = db
+      .cache_entry()
+      .find_incomplete_entries(before.naive_utc())
+      .await
+      .map_err(|e| {
+        warn!("Failed to query incomplete cache entries for GC: {e}");
+      })
+    else {
+      continue;
+    };
+
+    info!("Found {} incomplete cache entries for GC", entries.len());
+
+    delete_entries(&db, &storage, entries).await;
+
+    sleep(Duration::minutes(10).to_std().unwrap()).await;
   }
 }
 
 async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
   loop {
     info!("Running GC for incomplete uploads");
-    // cleanup uploads that didn't receive a new part for more than 5 minutes
-    let before = Utc::now() - Duration::minutes(5);
+    // cleanup uploads that didn't receive a new part for more than 10 minutes
+    let before = Utc::now() - Duration::minutes(10);
     let Ok(uploads) = db
       .cache_upload()
       .find_incomplete_uploads(before.naive_utc())
@@ -163,7 +177,11 @@ async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
 
     for (upload, parts) in uploads {
       if storage
-        .cancel_multipart_upload(&upload.key, upload.s3_upload_id.as_deref(), &parts)
+        .cancel_multipart_upload(
+          &upload.id.to_string(),
+          upload.s3_upload_id.as_deref(),
+          &parts,
+        )
         .await
         .map_err(|e| {
           warn!("Failed to cancel multipart upload for GC: {e}");
@@ -178,6 +196,6 @@ async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
       }
     }
 
-    sleep(Duration::minutes(5).to_std().unwrap()).await;
+    sleep(Duration::minutes(10).to_std().unwrap()).await;
   }
 }

@@ -140,14 +140,14 @@ impl<'db> CacheEntryTable<'db> {
     Ok(())
   }
 
-  pub async fn clean_incomplete_entries(&self, before: DateTime) -> Result<()> {
-    cache_entry::Entity::delete_many()
+  pub async fn find_incomplete_entries(&self, before: DateTime) -> Result<Vec<cache_entry::Model>> {
+    let entries = cache_entry::Entity::find()
       .filter(cache_entry::Column::Complete.eq(false))
       .filter(cache_entry::Column::CreatedAt.lt(before))
-      .exec(self.db)
+      .all(self.db)
       .await?;
 
-    Ok(())
+    Ok(entries)
   }
 
   pub async fn find_unused_entries(&self, before: DateTime) -> Result<Vec<cache_entry::Model>> {
