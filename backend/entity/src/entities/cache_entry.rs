@@ -13,7 +13,7 @@ pub struct Model {
   pub write_isolation_key: String,
   pub size: i64,
   pub created_at: DateTime,
-  pub used_at: Option<DateTime>,
+  pub used_at: DateTime,
   pub complete: bool,
 }
 

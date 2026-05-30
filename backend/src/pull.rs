@@ -66,6 +66,8 @@ async fn find(
   };
 
   if !storage.exists(&entry.id.to_string()).await? {
+    db.cache_entry().delete_by_id(entry.id).await?;
+
     return Ok((
       StatusCode::NO_CONTENT,
       Json(FindResult {

@@ -19,6 +19,7 @@ use crate::config::Config;
 mod auth;
 mod config;
 mod db;
+mod gc;
 mod pull;
 mod push;
 mod storage;
@@ -55,6 +56,8 @@ async fn state(mut router: Router, config: Config) -> Router {
   let storage = FileStorage::init(&config.storage)
     .await
     .expect("Failed to initialize storage");
+
+  router = gc::state(router, db.clone(), storage.clone());
 
   router
     .layer(Extension(db))
