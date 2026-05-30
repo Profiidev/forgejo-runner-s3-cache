@@ -28,13 +28,15 @@ impl MigrationTrait for Migration {
         Table::create()
           .table(CacheUploadPart::Table)
           .if_not_exists()
-          .col(pk_uuid(CacheUploadPart::Id))
-          .col(uuid(CacheUploadPart::CacheEntryId))
-          .col(string(CacheUploadPart::PartInfo))
+          .col(pk_auto(CacheUploadPart::Id))
+          .col(uuid(CacheUploadPart::CacheUpload))
+          .col(integer(CacheUploadPart::PartNumber))
+          .col(string_null(CacheUploadPart::ETag))
           .col(big_integer(CacheUploadPart::Size))
+          .col(big_integer(CacheUploadPart::StartByte))
           .foreign_key(
             ForeignKey::create()
-              .from(CacheUploadPart::Table, CacheUploadPart::CacheEntryId)
+              .from(CacheUploadPart::Table, CacheUploadPart::CacheUpload)
               .to(CacheUpload::Table, CacheUpload::Id)
               .on_delete(ForeignKeyAction::Cascade)
               .on_update(ForeignKeyAction::Cascade),
@@ -72,7 +74,9 @@ enum CacheUpload {
 enum CacheUploadPart {
   Table,
   Id,
-  CacheEntryId,
-  PartInfo,
+  CacheUpload,
+  PartNumber,
+  ETag,
   Size,
+  StartByte,
 }

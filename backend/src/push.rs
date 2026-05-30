@@ -1,4 +1,10 @@
-use axum::{Json, Router, routing::post};
+use axum::{
+  Json, Router,
+  body::Bytes,
+  extract::Path,
+  routing::{patch, post},
+};
+use axum_extra::{TypedHeader, headers::ContentRange};
 use centaurus::{bail, db::init::Connection, error::Result, storage::FileStorage};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -6,7 +12,9 @@ use uuid::Uuid;
 use crate::{auth::Auth, db::DBTrait, storage::StorageExt};
 
 pub fn router() -> Router {
-  Router::new().route("/caches", post(reserve))
+  Router::new()
+    .route("/caches", post(reserve))
+    .route("/caches/{id}", patch(upload_chunk))
 }
 
 #[derive(Deserialize)]
@@ -56,4 +64,48 @@ async fn reserve(
     .await?;
 
   Ok(Json(ReserveResponse { cache_id }))
+}
+
+#[derive(Deserialize)]
+struct UploadChunkPath {
+  id: Uuid,
+}
+
+async fn upload_chunk(
+  auth: Auth,
+  storage: FileStorage,
+  db: Connection,
+  TypedHeader(range): TypedHeader<ContentRange>,
+  Path(path): Path<UploadChunkPath>,
+  req: Bytes,
+) -> Result<()> {
+  let Some((start, _)) = range.bytes_range() else {
+    bail!("Content-Range header must specify a byte range");
+  };
+
+  let upload = db.cache_upload().find(path.id).await?;
+
+  if auth.write_isolation_key != upload.write_isolation_key {
+    bail!(FORBIDDEN, "Write isolation key does not match");
+  }
+
+  let chunk = db
+    .cache_upload()
+    .chunk(path.id, req.len() as i64, start as i64)
+    .await?;
+
+  let etag = storage
+    .upload_part(
+      &upload.id.to_string(),
+      upload.s3_upload_id.as_deref(),
+      chunk.part_number,
+      req,
+    )
+    .await?;
+
+  if let Some(etag) = etag {
+    db.cache_upload().update_etag(chunk.id, etag).await?;
+  }
+
+  Ok(())
 }

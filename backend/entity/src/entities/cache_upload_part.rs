@@ -5,18 +5,20 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
 #[sea_orm(table_name = "cache_upload_part")]
 pub struct Model {
-  #[sea_orm(primary_key, auto_increment = false)]
-  pub id: Uuid,
-  pub cache_entry_id: Uuid,
-  pub part_info: String,
+  #[sea_orm(primary_key)]
+  pub id: i32,
+  pub cache_upload: Uuid,
+  pub part_number: i32,
+  pub e_tag: Option<String>,
   pub size: i64,
+  pub start_byte: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
   #[sea_orm(
     belongs_to = "super::cache_upload::Entity",
-    from = "Column::CacheEntryId",
+    from = "Column::CacheUpload",
     to = "super::cache_upload::Column::Id",
     on_update = "Cascade",
     on_delete = "Cascade"
