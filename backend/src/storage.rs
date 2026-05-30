@@ -8,6 +8,7 @@ use centaurus::{
 };
 use http::StatusCode;
 use tokio::{fs, io};
+use tracing::warn;
 
 pub struct UploadPart {
   pub start_byte: i64,
@@ -187,7 +188,10 @@ impl StorageExt for FileStorage {
 
         Ok(())
       }
-      _ => bail!("Invalid storage configuration for cancelling multipart upload"),
+      _ => {
+        warn!("Invalid storage configuration for cancelling multipart upload");
+        Ok(())
+      }
     }
   }
 }

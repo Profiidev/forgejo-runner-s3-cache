@@ -114,15 +114,13 @@ async fn delete_entries(db: &Connection, storage: &FileStorage, entries: Vec<cac
   info!("Found {} cache entries for GC", entries.len());
 
   for entry in entries {
-    if storage
-      .exists(&entry.id.to_string())
-      .await
-      .map_err(|e| {
-        warn!("Failed to check cache object existence for GC: {e}");
-      })
-      .unwrap_or(false)
-      && let Err(e) = storage.delete_file(&entry.id.to_string()).await
-    {
+    let Ok(exists) = storage.exists(&entry.id.to_string()).await.map_err(|e| {
+      warn!("Failed to check cache object existence for GC: {e}");
+    }) else {
+      continue;
+    };
+
+    if exists && let Err(e) = storage.delete_file(&entry.id.to_string()).await {
       warn!("Failed to delete cache object for GC: {e}");
       continue;
     }
