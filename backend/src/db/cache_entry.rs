@@ -159,6 +159,15 @@ impl<'db> CacheEntryTable<'db> {
 
     Ok(entries)
   }
+
+  pub async fn find_entries_before(&self, before: DateTime) -> Result<Vec<cache_entry::Model>> {
+    let entries = cache_entry::Entity::find()
+      .filter(cache_entry::Column::CreatedAt.lt(before))
+      .all(self.db)
+      .await?;
+
+    Ok(entries)
+  }
 }
 
 fn escape_like(s: &str) -> String {

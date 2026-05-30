@@ -14,6 +14,7 @@ pub fn state(router: Router, db: Connection, storage: FileStorage) -> Router {
 
 #[derive(Clone)]
 struct Gc {
+  _entry: Arc<JoinHandle<()>>,
   _unused_entry: Arc<JoinHandle<()>>,
   _incomplete_entry: Arc<JoinHandle<()>>,
   _upload: Arc<JoinHandle<()>>,
@@ -21,6 +22,14 @@ struct Gc {
 
 impl Gc {
   pub fn init(db: Connection, storage: FileStorage) -> Self {
+    let entry = spawn({
+      let db = db.clone();
+      let storage = storage.clone();
+      async move {
+        entry_gc(db, storage).await;
+      }
+    });
+
     let unused_entry = spawn({
       let db = db.clone();
       let storage = storage.clone();
@@ -45,9 +54,41 @@ impl Gc {
     });
 
     Gc {
+      _entry: Arc::new(entry),
       _unused_entry: Arc::new(unused_entry),
       _incomplete_entry: Arc::new(incomplete_entry),
       _upload: Arc::new(upload),
+    }
+  }
+}
+
+async fn entry_gc(db: Connection, storage: FileStorage) -> ! {
+  loop {
+    info!("Running GC for cache entries");
+    // cleanup entries that are older than 30 days
+    let before = Utc::now() - Duration::days(30);
+    let Ok(entries) = db
+      .cache_entry()
+      .find_entries_before(before.naive_utc())
+      .await
+      .map_err(|e| {
+        warn!("Failed to query cache entries for GC: {e}");
+      })
+    else {
+      continue;
+    };
+
+    info!("Found {} cache entries for GC", entries.len());
+
+    for entry in entries {
+      if let Err(e) = storage.delete_file(&entry.id.to_string()).await {
+        warn!("Failed to delete cache object for GC: {e}");
+        continue;
+      }
+
+      if let Err(e) = db.cache_entry().delete_by_id(entry.id).await {
+        warn!("Failed to delete cache entry for GC: {e}");
+      }
     }
   }
 }
