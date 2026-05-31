@@ -3,7 +3,7 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "cache_upload")]
+#[sea_orm(table_name = "cache_entry_pending")]
 pub struct Model {
   #[sea_orm(primary_key)]
   pub id: i32,
@@ -11,22 +11,13 @@ pub struct Model {
   pub key: String,
   pub version: String,
   pub write_isolation_key: String,
-  pub size: Option<i64>,
+  pub size: i64,
   pub created_at: DateTime,
-  pub s3_upload_id: Option<String>,
+  pub used_at: DateTime,
   pub file_id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {
-  #[sea_orm(has_many = "super::cache_upload_part::Entity")]
-  CacheUploadPart,
-}
-
-impl Related<super::cache_upload_part::Entity> for Entity {
-  fn to() -> RelationDef {
-    Relation::CacheUploadPart.def()
-  }
-}
+pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

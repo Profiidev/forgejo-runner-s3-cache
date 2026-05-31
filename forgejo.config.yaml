@@ -1,0 +1,21 @@
+server:
+  connections:
+    forgejo:
+      url: <url>
+      uuid: <uuid>
+      token: <token>
+runner:
+  capacity: 10
+  name: test
+  envs:
+    DOCKER_HOST: tcp://docker-in-docker:2375
+  labels:
+    - test-latest:docker://catthehacker/ubuntu:act-latest
+    - rust-test-latest:docker://catthehacker/ubuntu:rust-latest
+    - node-test-latest:docker://catthehacker/ubuntu:js-latest
+cache:
+  enabled: true
+  secret: "test-secret"
+  external_server: "http://backend:8000"
+container:
+  options: "--add-host=docker-in-docker.docker.internal:host-gateway"

@@ -20,7 +20,7 @@ impl<'db> CacheUploadTable<'db> {
     size: Option<i64>,
     repo: String,
     write_isolation_key: String,
-  ) -> Result<i32> {
+  ) -> Result<(i32, Uuid)> {
     let entry = cache_upload::ActiveModel {
       key: Set(key),
       version: Set(version),
@@ -30,11 +30,12 @@ impl<'db> CacheUploadTable<'db> {
       write_isolation_key: Set(write_isolation_key),
       id: sea_orm::ActiveValue::NotSet,
       s3_upload_id: sea_orm::ActiveValue::NotSet,
+      file_id: Set(Uuid::new_v4()),
     };
 
     let model = entry.insert(self.db).await?;
 
-    Ok(model.id)
+    Ok((model.id, model.file_id))
   }
 
   pub async fn set_s3_upload_id(&self, id: i32, s3_upload_id: String) -> Result<()> {
@@ -51,7 +52,13 @@ impl<'db> CacheUploadTable<'db> {
     Ok(())
   }
 
-  pub async fn chunk(&self, id: i32, size: i64, start: i64) -> Result<cache_upload_part::Model> {
+  pub async fn chunk(
+    &self,
+    id: i32,
+    size: i64,
+    start: i64,
+    part_number: i32,
+  ) -> Result<cache_upload_part::Model> {
     let existing = cache_upload_part::Entity::find()
       .filter(cache_upload_part::Column::CacheUpload.eq(id))
       .filter(cache_upload_part::Column::StartByte.eq(start))
@@ -69,19 +76,12 @@ impl<'db> CacheUploadTable<'db> {
       cache_upload: Set(id),
       id: sea_orm::ActiveValue::NotSet,
       size: Set(size),
-      part_number: Set(0),
+      part_number: Set(part_number),
       e_tag: Set(None),
       start_byte: Set(start),
     };
 
     let model = model.insert(self.db).await?;
-
-    // S3 part number
-    let part_number = (model.id % 10000) as i32 + 1;
-
-    let mut model = model.into_active_model();
-    model.part_number = Set(part_number);
-    let model = model.update(self.db).await?;
 
     Ok(model)
   }
@@ -119,7 +119,6 @@ impl<'db> CacheUploadTable<'db> {
       parts
         .into_iter()
         .map(|part| UploadPart {
-          start_byte: part.start_byte,
           part_number: part.part_number,
           etag: part.e_tag,
           size: part.size,

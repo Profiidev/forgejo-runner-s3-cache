@@ -1,7 +1,7 @@
 use axum::{
   Json, Router,
   body::Bytes,
-  extract::Path,
+  extract::{DefaultBodyLimit, Path},
   routing::{patch, post},
 };
 use axum_extra::{TypedHeader, headers::ContentRange};
@@ -13,7 +13,10 @@ use crate::{auth::Auth, db::DBTrait, storage::StorageExt};
 pub fn router() -> Router {
   Router::new()
     .route("/caches", post(reserve))
-    .route("/caches/{id}", patch(upload_chunk))
+    .route(
+      "/caches/{id}",
+      patch(upload_chunk).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
+    )
     .route("/caches/{id}", post(commit))
     .route("/clean", post(clean))
 }
@@ -46,7 +49,7 @@ async fn reserve(
     }
   }
 
-  let cache_id = db
+  let (cache_id, file_id) = db
     .cache_upload()
     .reserve(
       req.key.to_lowercase(),
@@ -58,7 +61,7 @@ async fn reserve(
     .await?;
 
   let upload_id = storage
-    .create_multipart_upload(&cache_id.to_string())
+    .create_multipart_upload(&file_id.to_string())
     .await?;
 
   if let Some(upload_id) = upload_id {
@@ -93,14 +96,16 @@ async fn upload_chunk(
     bail!(FORBIDDEN, "Write isolation key does not match");
   }
 
+  let part_number = (start / req.len() as u64) + 1;
+
   let chunk = db
     .cache_upload()
-    .chunk(path.id, req.len() as i64, start as i64)
+    .chunk(path.id, req.len() as i64, start as i64, part_number as i32)
     .await?;
 
   let etag = storage
     .upload_part(
-      &upload.id.to_string(),
+      &upload.file_id.to_string(),
       upload.s3_upload_id.as_deref(),
       chunk.part_number,
       req,
@@ -143,11 +148,14 @@ async fn commit(
     );
   }
 
-  let cache = db.cache_entry().create_cache(upload.clone(), size).await?;
+  let cache = db
+    .cache_entry()
+    .create_cache_pending(upload.clone(), size)
+    .await?;
 
   storage
     .complete_multipart_upload(
-      &upload.id.to_string(),
+      &upload.file_id.to_string(),
       upload.s3_upload_id.as_deref(),
       parts,
     )

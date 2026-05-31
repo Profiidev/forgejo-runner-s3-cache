@@ -1,16 +1,16 @@
 services:
   backend:
     image: ghcr.io/profiidev/images/rust-musl-watch:main@sha256:0d38b2e2239495eb551af4208acf213e40e551489ec8ca9386d16db987f21a61
-    user: '${HOST_UID:-0}:${HOST_GID:-0}'
+    user: "${HOST_UID:-0}:${HOST_GID:-0}"
     volumes:
       - ./backend:/app
     networks:
       - nginx
     tty: true
     ports:
-      - '5173:8000'
-    entrypoint: ['tini', '--']
-    command: ['cargo', 'watch', '-x', 'run']
+      - "5173:8000"
+    entrypoint: ["tini", "--"]
+    command: ["cargo", "watch", "-x", "run"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,14 +27,42 @@ services:
     networks:
       - nginx
     ports:
-      - '9301:5432'
+      - "9301:5432"
     healthcheck:
-      test: ['CMD', 'pg_isready', '-U', 'test']
+      test: ["CMD", "pg_isready", "-U", "test"]
       interval: 60s
       timeout: 5s
       retries: 5
       start_period: 10s
       start_interval: 1s
+
+  docker-in-docker:
+    image: docker:dind
+    container_name: "docker_dind"
+    privileged: "true"
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
+    restart: "unless-stopped"
+    networks:
+      - nginx
+
+  gitea:
+    image: "data.forgejo.org/forgejo/runner:12.10.2"
+    links:
+      - docker-in-docker
+    depends_on:
+      docker-in-docker:
+        condition: service_started
+      backend:
+        condition: service_started
+    container_name: "runner"
+    environment:
+      DOCKER_HOST: tcp://docker-in-docker:2375
+    volumes:
+      - ./data:/data
+    restart: "unless-stopped"
+    networks:
+      - nginx
+    command: '/bin/sh -c "sleep 5; forgejo-runner daemon --config /data/config.yaml"'
 
 networks:
   nginx:
