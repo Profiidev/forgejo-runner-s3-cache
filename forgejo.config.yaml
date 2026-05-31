@@ -1,0 +1,14 @@
+server:
+  connections:
+    forgejo:
+      url: <url>
+      uuid: <uuid>
+      token: <token>
+runner:
+  name: test
+  labels:
+    - test-latest:docker://catthehacker/ubuntu:act-latest
+cache:
+  enabled: true
+  secret: "test-secret"
+  external_server: "http://backend:8000"
