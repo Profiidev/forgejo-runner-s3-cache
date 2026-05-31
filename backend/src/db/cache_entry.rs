@@ -116,6 +116,9 @@ impl<'db> CacheEntryTable<'db> {
             model.insert(tx).await?;
           }
 
+          cache_entry_pending::Entity::delete_by_id(id)
+            .exec(tx)
+            .await?;
           cache_upload::Entity::delete_by_id(id).exec(tx).await?;
 
           Ok(())
