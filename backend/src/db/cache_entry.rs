@@ -60,9 +60,18 @@ impl<'db> CacheEntryTable<'db> {
       .db
       .transaction::<_, (), ErrorReport>(|tx| {
         Box::pin(async move {
-          let Some(pending_model) = cache_entry_pending::Entity::find_by_id(id).one(tx).await? else {
+          let Some(pending_model) = cache_entry_pending::Entity::find_by_id(id).one(tx).await?
+          else {
             bail!("Cache pending entry not found");
           };
+
+          let existing_entry = cache_entry::Entity::find()
+            .filter(cache_entry::Column::Repo.eq(&pending_model.repo))
+            .filter(cache_entry::Column::Version.eq(&pending_model.version))
+            .filter(cache_entry::Column::WriteIsolationKey.eq(&pending_model.write_isolation_key))
+            .filter(cache_entry::Column::Key.eq(&pending_model.key))
+            .one(tx)
+            .await?;
 
           let model = cache_entry::ActiveModel {
             id: Set(pending_model.id),
@@ -76,7 +85,7 @@ impl<'db> CacheEntryTable<'db> {
             file_id: Set(pending_model.file_id),
           };
 
-          let insert_res = cache_entry::Entity::insert(model)
+          cache_entry::Entity::insert(model)
             .on_conflict(
               OnConflict::columns([
                 cache_entry::Column::Repo,
@@ -95,24 +104,14 @@ impl<'db> CacheEntryTable<'db> {
             .exec(tx)
             .await?;
 
-          if insert_res.last_insert_id != pending_model.id {
-            let existing_model = cache_entry::Entity::find_by_id(insert_res.last_insert_id)
-              .one(tx)
-              .await?
-              .context("Failed to find existing cache entry after conflict")?;
-
-            let old_file_id = existing_model.file_id;
-
-            tracing::warn!(
-              "Cache entry conflict: existing entry {} conflicts with upload {}. Overwriting existing entry. Existing file ID: {}, new file ID: {}",
-              existing_model.id, pending_model.id, old_file_id, pending_model.file_id
-            );
-
-            cache_entry::Entity::delete_by_id(existing_model.id).exec(tx).await?;
+          if let Some(existing_model) = existing_entry {
+            cache_entry::Entity::delete_by_id(existing_model.id)
+              .exec(tx)
+              .await?;
 
             let model = cache_cleanup::ActiveModel {
               id: sea_orm::ActiveValue::NotSet,
-              file_id: Set(old_file_id),
+              file_id: Set(existing_model.file_id),
             };
             model.insert(tx).await?;
           }
