@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::{Extension, Router};
 use centaurus::{db::init::Connection, storage::FileStorage};
 use chrono::{Duration, Utc};
-use entity::cache_entry;
+use entity::{cache_cleanup, cache_entry};
+use sea_orm::EntityTrait;
 use tokio::{spawn, task::JoinHandle, time::sleep};
 use tracing::{info, warn};
 use uuid::Uuid;
@@ -19,6 +20,7 @@ struct Gc {
   _entry: Arc<JoinHandle<()>>,
   _unused_entry: Arc<JoinHandle<()>>,
   _incomplete_entry: Arc<JoinHandle<()>>,
+  _cache_cleanup: Arc<JoinHandle<()>>,
   _upload: Arc<JoinHandle<()>>,
 }
 
@@ -48,6 +50,14 @@ impl Gc {
       }
     });
 
+    let cache_cleanup = spawn({
+      let db = db.clone();
+      let storage = storage.clone();
+      async move {
+        cache_cleanup_gc(db, storage).await;
+      }
+    });
+
     let upload = spawn({
       let db = db.clone();
       let storage = storage.clone();
@@ -60,6 +70,7 @@ impl Gc {
       _entry: Arc::new(entry),
       _unused_entry: Arc::new(unused_entry),
       _incomplete_entry: Arc::new(incomplete_entry),
+      _cache_cleanup: Arc::new(cache_cleanup),
       _upload: Arc::new(upload),
     }
   }
@@ -160,6 +171,37 @@ async fn incomplete_entry_gc(db: Connection, storage: FileStorage) -> ! {
     }
 
     sleep(Duration::minutes(10).to_std().unwrap()).await;
+  }
+}
+
+async fn cache_cleanup_gc(db: Connection, storage: FileStorage) -> ! {
+  loop {
+    info!("Running GC for cache cleanup entries");
+    // cleanup cache cleanup entries that where marked for cleanup because of commit conflicts
+    let Ok(entries) = cache_cleanup::Entity::find().all(&db.0).await.map_err(|e| {
+      warn!("Failed to query cache cleanup entries for GC: {e}");
+    }) else {
+      sleep(Duration::minutes(5).to_std().unwrap()).await;
+
+      continue;
+    };
+
+    info!("Found {} cache cleanup entries for GC", entries.len());
+
+    for entry in entries {
+      if !try_delete_file(&storage, entry.file_id).await {
+        continue;
+      }
+
+      if let Err(e) = cache_cleanup::Entity::delete_by_id(entry.id)
+        .exec(&db.0)
+        .await
+      {
+        warn!("Failed to delete cache cleanup entry for GC: {e}");
+      }
+    }
+
+    sleep(Duration::minutes(5).to_std().unwrap()).await;
   }
 }
 
