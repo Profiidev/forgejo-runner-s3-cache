@@ -8,6 +8,8 @@ runner:
   name: test
   labels:
     - test-latest:docker://catthehacker/ubuntu:act-latest
+    - rust-test-latest:docker://catthehacker/ubuntu:rust-latest
+    - node-test-latest:docker://catthehacker/ubuntu:js-latest
 cache:
   enabled: true
   secret: "test-secret"

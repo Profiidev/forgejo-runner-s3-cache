@@ -20,7 +20,7 @@ impl<'db> CacheUploadTable<'db> {
     size: Option<i64>,
     repo: String,
     write_isolation_key: String,
-  ) -> Result<i32> {
+  ) -> Result<(i32, Uuid)> {
     let entry = cache_upload::ActiveModel {
       key: Set(key),
       version: Set(version),
@@ -30,11 +30,12 @@ impl<'db> CacheUploadTable<'db> {
       write_isolation_key: Set(write_isolation_key),
       id: sea_orm::ActiveValue::NotSet,
       s3_upload_id: sea_orm::ActiveValue::NotSet,
+      file_id: Set(Uuid::max()),
     };
 
     let model = entry.insert(self.db).await?;
 
-    Ok(model.id)
+    Ok((model.id, model.file_id))
   }
 
   pub async fn set_s3_upload_id(&self, id: i32, s3_upload_id: String) -> Result<()> {

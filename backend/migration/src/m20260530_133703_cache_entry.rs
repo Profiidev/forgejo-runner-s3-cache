@@ -20,6 +20,7 @@ impl MigrationTrait for Migration {
           .col(date_time(CacheEntry::CreatedAt))
           .col(date_time(CacheEntry::UsedAt))
           .col(boolean(CacheEntry::Complete))
+          .col(uuid(CacheEntry::FileId))
           .to_owned(),
       )
       .await?;
@@ -60,4 +61,5 @@ enum CacheEntry {
   CreatedAt,
   UsedAt,
   Complete,
+  FileId,
 }

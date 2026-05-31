@@ -15,6 +15,7 @@ pub struct Model {
   pub created_at: DateTime,
   pub used_at: DateTime,
   pub complete: bool,
+  pub file_id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

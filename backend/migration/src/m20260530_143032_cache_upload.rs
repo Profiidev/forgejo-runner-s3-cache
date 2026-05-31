@@ -19,6 +19,7 @@ impl MigrationTrait for Migration {
           .col(big_integer_null(CacheUpload::Size))
           .col(date_time(CacheUpload::CreatedAt))
           .col(string_null(CacheUpload::S3UploadId))
+          .col(uuid(CacheUpload::FileId))
           .to_owned(),
       )
       .await?;
@@ -68,6 +69,7 @@ enum CacheUpload {
   Size,
   CreatedAt,
   S3UploadId,
+  FileId,
 }
 
 #[derive(DeriveIden)]

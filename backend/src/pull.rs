@@ -65,7 +65,7 @@ async fn find(
     ));
   };
 
-  if !storage.exists(&entry.id.to_string()).await? {
+  if !storage.exists(&entry.file_id.to_string()).await? {
     db.cache_entry().delete_by_id(entry.id).await?;
 
     return Ok((
@@ -140,7 +140,7 @@ async fn download(
     None
   };
 
-  let body = storage.get_file(&entry.id.to_string(), range).await?;
+  let body = storage.get_file(&entry.file_id.to_string(), range).await?;
 
   db.cache_entry().update_used_at(path.id).await?;
 

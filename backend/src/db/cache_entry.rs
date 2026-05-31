@@ -1,7 +1,13 @@
-use centaurus::{error::Result, eyre::ContextCompat};
+use centaurus::{
+  bail,
+  error::{ErrorReport, Result},
+  eyre::{Context, ContextCompat},
+};
 use entity::{cache_entry, cache_upload};
+use migration::OnConflict;
 use sea_orm::{
-  ActiveValue::Set, IntoActiveModel, QueryOrder, prelude::*, sqlx::types::chrono::Utc,
+  ActiveValue::Set, IntoActiveModel, QueryOrder, TransactionTrait, prelude::*,
+  sqlx::types::chrono::Utc,
 };
 
 use crate::auth::Auth;
@@ -27,6 +33,7 @@ impl<'db> CacheEntryTable<'db> {
       used_at: Set(now),
       write_isolation_key: Set(upload.write_isolation_key),
       complete: Set(false),
+      file_id: Set(upload.file_id),
     };
 
     let model = entry.insert(self.db).await?;
@@ -50,6 +57,47 @@ impl<'db> CacheEntryTable<'db> {
   }
 
   pub async fn complete(&self, id: i32) -> Result<()> {
+    self
+      .db
+      .transaction::<_, (), ErrorReport>(|tx| {
+        Box::pin(async move {
+          let Some(model) = cache_entry::Entity::find_by_id(id).one(tx).await? else {
+            bail!("Cache upload entry not found");
+          };
+          let current_id = model.id;
+
+          let mut model = model.into_active_model();
+          model.complete = Set(true);
+          model.used_at = Set(Utc::now().naive_utc());
+
+          let insert_res = cache_entry::Entity::insert(model)
+            .on_conflict(
+              OnConflict::columns([
+                cache_entry::Column::Repo,
+                cache_entry::Column::Version,
+                cache_entry::Column::WriteIsolationKey,
+                cache_entry::Column::Key,
+              ])
+              .update_columns([
+                cache_entry::Column::Complete,
+                cache_entry::Column::CreatedAt,
+                cache_entry::Column::UsedAt,
+                cache_entry::Column::Size,
+                cache_entry::Column::FileId,
+              ])
+              .to_owned(),
+            )
+            .exec(tx)
+            .await?;
+
+          if insert_res.last_insert_id != current_id {}
+
+          Ok(())
+        })
+      })
+      .await
+      .context("Failed to complete upload")?;
+
     let model = self.find(id).await?;
 
     let mut model = model.into_active_model();

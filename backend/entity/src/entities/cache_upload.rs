@@ -14,6 +14,7 @@ pub struct Model {
   pub size: Option<i64>,
   pub created_at: DateTime,
   pub s3_upload_id: Option<String>,
+  pub file_id: Uuid,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -114,13 +114,17 @@ async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
 
 async fn delete_entries(db: &Connection, storage: &FileStorage, entries: Vec<cache_entry::Model>) {
   for entry in entries {
-    let Ok(exists) = storage.exists(&entry.id.to_string()).await.map_err(|e| {
-      warn!("Failed to check cache object existence for GC: {e}");
-    }) else {
+    let Ok(exists) = storage
+      .exists(&entry.file_id.to_string())
+      .await
+      .map_err(|e| {
+        warn!("Failed to check cache object existence for GC: {e}");
+      })
+    else {
       continue;
     };
 
-    if exists && let Err(e) = storage.delete_file(&entry.id.to_string()).await {
+    if exists && let Err(e) = storage.delete_file(&entry.file_id.to_string()).await {
       warn!("Failed to delete cache object for GC: {e}");
       continue;
     }
@@ -176,7 +180,7 @@ async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
     for (upload, parts) in uploads {
       if storage
         .cancel_multipart_upload(
-          &upload.id.to_string(),
+          &upload.file_id.to_string(),
           upload.s3_upload_id.as_deref(),
           &parts,
         )
