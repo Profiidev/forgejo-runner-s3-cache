@@ -148,7 +148,10 @@ async fn commit(
     );
   }
 
-  let cache = db.cache_entry().create_cache_pending(upload.clone(), size).await?;
+  let cache = db
+    .cache_entry()
+    .create_cache_pending(upload.clone(), size)
+    .await?;
 
   storage
     .complete_multipart_upload(

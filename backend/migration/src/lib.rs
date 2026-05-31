@@ -10,9 +10,9 @@ mod m20260531_140045_cache_cleanup;
 impl MigratorTrait for Migrator {
   fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
-            Box::new(m20260530_133703_cache_entry::Migration),
-            Box::new(m20260530_143032_cache_upload::Migration),
-            Box::new(m20260531_140045_cache_cleanup::Migration),
-        ]
+      Box::new(m20260530_133703_cache_entry::Migration),
+      Box::new(m20260530_143032_cache_upload::Migration),
+      Box::new(m20260531_140045_cache_cleanup::Migration),
+    ]
   }
 }
