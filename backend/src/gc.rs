@@ -6,6 +6,7 @@ use chrono::{Duration, Utc};
 use entity::cache_entry;
 use tokio::{spawn, task::JoinHandle, time::sleep};
 use tracing::{info, warn};
+use uuid::Uuid;
 
 use crate::{db::DBTrait, storage::StorageExt};
 
@@ -77,6 +78,8 @@ async fn entry_gc(db: Connection, storage: FileStorage) -> ! {
         warn!("Failed to query cache entries for GC: {e}");
       })
     else {
+      sleep(Duration::hours(24).to_std().unwrap()).await;
+
       continue;
     };
 
@@ -101,6 +104,8 @@ async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
         warn!("Failed to query unused cache entries for GC: {e}");
       })
     else {
+      sleep(Duration::hours(1).to_std().unwrap()).await;
+
       continue;
     };
 
@@ -114,18 +119,7 @@ async fn unused_entry_gc(db: Connection, storage: FileStorage) -> ! {
 
 async fn delete_entries(db: &Connection, storage: &FileStorage, entries: Vec<cache_entry::Model>) {
   for entry in entries {
-    let Ok(exists) = storage
-      .exists(&entry.file_id.to_string())
-      .await
-      .map_err(|e| {
-        warn!("Failed to check cache object existence for GC: {e}");
-      })
-    else {
-      continue;
-    };
-
-    if exists && let Err(e) = storage.delete_file(&entry.file_id.to_string()).await {
-      warn!("Failed to delete cache object for GC: {e}");
+    if !try_delete_file(storage, entry.file_id).await {
       continue;
     }
 
@@ -148,15 +142,40 @@ async fn incomplete_entry_gc(db: Connection, storage: FileStorage) -> ! {
         warn!("Failed to query incomplete cache entries for GC: {e}");
       })
     else {
+      sleep(Duration::minutes(10).to_std().unwrap()).await;
+
       continue;
     };
 
     info!("Found {} incomplete cache entries for GC", entries.len());
 
-    delete_entries(&db, &storage, entries).await;
+    for entry in entries {
+      if !try_delete_file(&storage, entry.file_id).await {
+        continue;
+      }
+
+      if let Err(e) = db.cache_entry().delete_pending_by_id(entry.id).await {
+        warn!("Failed to delete incomplete cache entry for GC: {e}");
+      }
+    }
 
     sleep(Duration::minutes(10).to_std().unwrap()).await;
   }
+}
+
+async fn try_delete_file(storage: &FileStorage, file_id: Uuid) -> bool {
+  let Ok(exists) = storage.exists(&file_id.to_string()).await.map_err(|e| {
+    warn!("Failed to check cache object existence for GC: {e}");
+  }) else {
+    return false;
+  };
+
+  if exists && let Err(e) = storage.delete_file(&file_id.to_string()).await {
+    warn!("Failed to delete cache object for GC: {e}");
+    return false;
+  }
+
+  true
 }
 
 async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
@@ -172,6 +191,8 @@ async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
         warn!("Failed to query incomplete uploads for GC: {e}");
       })
     else {
+      sleep(Duration::minutes(10).to_std().unwrap()).await;
+
       continue;
     };
 

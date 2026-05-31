@@ -3,17 +3,10 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "cache_entry")]
+#[sea_orm(table_name = "cache_cleanup")]
 pub struct Model {
   #[sea_orm(primary_key)]
   pub id: i32,
-  pub repo: String,
-  pub key: String,
-  pub version: String,
-  pub write_isolation_key: String,
-  pub size: i64,
-  pub created_at: DateTime,
-  pub used_at: DateTime,
   pub file_id: Uuid,
 }
 

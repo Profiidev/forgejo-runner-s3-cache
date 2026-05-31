@@ -19,8 +19,25 @@ impl MigrationTrait for Migration {
           .col(big_integer(CacheEntry::Size))
           .col(date_time(CacheEntry::CreatedAt))
           .col(date_time(CacheEntry::UsedAt))
-          .col(boolean(CacheEntry::Complete))
           .col(uuid(CacheEntry::FileId))
+          .to_owned(),
+      )
+      .await?;
+
+    manager
+      .create_table(
+        Table::create()
+          .table(CacheEntryPending::Table)
+          .if_not_exists()
+          .col(pk_auto(CacheEntryPending::Id))
+          .col(string(CacheEntryPending::Repo))
+          .col(string(CacheEntryPending::Key))
+          .col(string(CacheEntryPending::Version))
+          .col(string(CacheEntryPending::WriteIsolationKey))
+          .col(big_integer(CacheEntryPending::Size))
+          .col(date_time(CacheEntryPending::CreatedAt))
+          .col(date_time(CacheEntryPending::UsedAt))
+          .col(uuid(CacheEntryPending::FileId))
           .to_owned(),
       )
       .await?;
@@ -30,11 +47,11 @@ impl MigrationTrait for Migration {
         Index::create()
           .if_not_exists()
           .name("idx_cache_lookup")
+          .unique()
           .table(CacheEntry::Table)
           .col(CacheEntry::Repo)
           .col(CacheEntry::Version)
           .col(CacheEntry::WriteIsolationKey)
-          .col(CacheEntry::Complete)
           .col(CacheEntry::Key)
           .unique()
           .to_owned(),
@@ -60,6 +77,19 @@ enum CacheEntry {
   Size,
   CreatedAt,
   UsedAt,
-  Complete,
+  FileId,
+}
+
+#[derive(DeriveIden)]
+enum CacheEntryPending {
+  Table,
+  Id,
+  Repo,
+  Key,
+  Version,
+  WriteIsolationKey,
+  Size,
+  CreatedAt,
+  UsedAt,
   FileId,
 }

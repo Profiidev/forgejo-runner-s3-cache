@@ -2,6 +2,8 @@
 
 pub mod prelude;
 
+pub mod cache_cleanup;
 pub mod cache_entry;
+pub mod cache_entry_pending;
 pub mod cache_upload;
 pub mod cache_upload_part;

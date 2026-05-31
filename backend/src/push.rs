@@ -96,9 +96,11 @@ async fn upload_chunk(
     bail!(FORBIDDEN, "Write isolation key does not match");
   }
 
+  let part_number = (start / req.len() as u64) + 1;
+
   let chunk = db
     .cache_upload()
-    .chunk(path.id, req.len() as i64, start as i64)
+    .chunk(path.id, req.len() as i64, start as i64, part_number as i32)
     .await?;
 
   let etag = storage
@@ -146,7 +148,7 @@ async fn commit(
     );
   }
 
-  let cache = db.cache_entry().create_cache(upload.clone(), size).await?;
+  let cache = db.cache_entry().create_cache_pending(upload.clone(), size).await?;
 
   storage
     .complete_multipart_upload(

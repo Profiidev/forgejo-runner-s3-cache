@@ -11,7 +11,6 @@ use tokio::{fs, io};
 use tracing::warn;
 
 pub struct UploadPart {
-  pub start_byte: i64,
   pub part_number: i32,
   pub etag: Option<String>,
   pub size: i64,
@@ -106,7 +105,7 @@ impl StorageExt for FileStorage {
     upload_id: Option<&str>,
     mut parts: Vec<UploadPart>,
   ) -> Result<()> {
-    parts.sort_unstable_by_key(|part| part.start_byte);
+    parts.sort_unstable_by_key(|part| part.part_number);
 
     match (self, upload_id) {
       (FileStorage::Local(path), None) => {
