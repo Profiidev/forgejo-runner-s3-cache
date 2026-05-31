@@ -22,6 +22,22 @@ impl MigrationTrait for Migration {
           .col(boolean(CacheEntry::Complete))
           .to_owned(),
       )
+      .await?;
+
+    manager
+      .create_index(
+        Index::create()
+          .if_not_exists()
+          .name("idx_cache_lookup")
+          .table(CacheEntry::Table)
+          .col(CacheEntry::Repo)
+          .col(CacheEntry::Version)
+          .col(CacheEntry::WriteIsolationKey)
+          .col(CacheEntry::Complete)
+          .col(CacheEntry::Key)
+          .unique()
+          .to_owned(),
+      )
       .await
   }
 
