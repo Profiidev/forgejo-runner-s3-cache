@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version'
+        description: "Release version"
         required: true
-        default: 'v0.0.0'
+        default: "v0.0.0"
 
 jobs:
   update-version:
@@ -23,8 +23,10 @@ jobs:
 
       - name: Update version
         id: update_version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
-          RAW_TAG=${{ github.event.inputs.version }}
+          RAW_TAG=$INPUT_VERSION
           NEW_VERSION="${RAW_TAG#v}"
           echo "Bumping version to $NEW_VERSION"
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" backend/Cargo.toml
@@ -34,10 +36,10 @@ jobs:
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ steps.app-token.outputs.token }}
-          commit-message: 'Updated version to ${{ github.event.inputs.version }}'
+          commit-message: "Updated version to ${{ github.event.inputs.version }}"
           branch: chore/release-version-${{ github.event.inputs.version }}
-          title: 'Release version ${{ github.event.inputs.version }}'
-          body: 'This PR releases the version ${{ github.event.inputs.version }}.'
+          title: "Release version ${{ github.event.inputs.version }}"
+          body: "This PR releases the version ${{ github.event.inputs.version }}."
           base: main
           sign-commits: true
           labels: release-version
