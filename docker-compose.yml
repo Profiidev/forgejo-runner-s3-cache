@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/profiidev/images/rust-musl-watch:main@sha256:fe2632f5dd048025fb3713ac610a06733f3c151987060230317ab4397682f312
+    image: ghcr.io/profiidev/images/rust-musl-watch:main@sha256:b394c8a18efd983d74234fea57cf26f4abf5c79afcafc63d6e2997d3ab9b5441
     user: "${HOST_UID:-0}:${HOST_GID:-0}"
     volumes:
       - ./backend:/app
