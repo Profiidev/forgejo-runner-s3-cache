@@ -37,7 +37,7 @@ services:
       start_interval: 1s
 
   docker-in-docker:
-    image: docker:dind
+    image: docker:dind@sha256:084e385b0c9b7ab35d5a46dfedd033721448c000dbec71adcf13da8a9e71baa8
     container_name: "docker_dind"
     privileged: "true"
     command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
@@ -46,7 +46,7 @@ services:
       - nginx
 
   gitea:
-    image: "data.forgejo.org/forgejo/runner:12.10.2"
+    image: "data.forgejo.org/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae"
     links:
       - docker-in-docker
     depends_on:
