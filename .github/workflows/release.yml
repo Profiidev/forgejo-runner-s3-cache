@@ -167,3 +167,29 @@ jobs:
           repository: profiidev/helm-charts
           token: ${{ steps.app-token.outputs.token }}
           client-payload: '{"chart_name": "forgejo-runner-s3-cache", "chart_version": "${{ github.ref_name }}" }'
+
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    needs:
+      - merge
+    if: github.event_name != 'pull_request'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - ${{ github.repository }}/proxy
+
+    steps:
+      - uses: actions/delete-package-versions@4dbb860504f6d0cde296a192842138c03915746a # v5
+        with:
+          package-type: container
+          package-name: ${{ matrix.package }}
+          min-versions-to-keep: 0
+          delete-only-untagged-versions: true
