@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/profiidev/images/rust-musl-watch:main@sha256:b394c8a18efd983d74234fea57cf26f4abf5c79afcafc63d6e2997d3ab9b5441
+    image: ghcr.io/profiidev/images/rust-musl-watch:main@sha256:b03ecb064002e849d0f65dfa3690053241b0bfe4b893926f527d70655ff8bedc
     user: "${HOST_UID:-0}:${HOST_GID:-0}"
     volumes:
       - ./backend:/app
@@ -16,7 +16,7 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:18@sha256:3a82e1f56c8f0f5616a11103ac3d47e632c3938698946a7ad26da0df1334744a
+    image: postgres:18@sha256:4ef4dbc939d61acea57712655ddb4b4ab27419c913f94cca0cd57cb3ea3c2280
     restart: unless-stopped
     volumes:
       - ./postgres:/var/lib/postgresql
@@ -37,7 +37,7 @@ services:
       start_interval: 1s
 
   docker-in-docker:
-    image: docker:dind@sha256:084e385b0c9b7ab35d5a46dfedd033721448c000dbec71adcf13da8a9e71baa8
+    image: docker:dind@sha256:3ef33f2e220b79ed3ef3b99d81746f06f306cd6340e2cb7331d17ae996e74cb6
     container_name: "docker_dind"
     privileged: "true"
     command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
