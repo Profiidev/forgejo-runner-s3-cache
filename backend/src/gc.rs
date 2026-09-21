@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use axum::{Extension, Router};
-use centaurus::{db::init::Connection, storage::FileStorage};
+use centaurus::{
+  db::init::Connection,
+  storage::{FileStorage, StoragePath},
+};
 use chrono::{Duration, Utc};
 use entity::{cache_cleanup, cache_entry};
 use sea_orm::EntityTrait;
@@ -206,13 +209,14 @@ async fn cache_cleanup_gc(db: Connection, storage: FileStorage) -> ! {
 }
 
 async fn try_delete_file(storage: &FileStorage, file_id: Uuid) -> bool {
-  let Ok(exists) = storage.exists(&file_id.to_string()).await.map_err(|e| {
+  let path = StoragePath::from(file_id.to_string());
+  let Ok(exists) = storage.exists(&path).await.map_err(|e| {
     warn!("Failed to check cache object existence for GC: {e}");
   }) else {
     return false;
   };
 
-  if exists && let Err(e) = storage.delete_file(&file_id.to_string()).await {
+  if exists && let Err(e) = storage.delete_file(&path).await {
     warn!("Failed to delete cache object for GC: {e}");
     return false;
   }
@@ -240,18 +244,17 @@ async fn upload_gc(db: Connection, storage: FileStorage) -> ! {
 
     info!("Found {} incomplete uploads for GC", uploads.len());
 
-    for (upload, parts) in uploads {
-      if storage
-        .cancel_multipart_upload(
-          &upload.file_id.to_string(),
-          upload.s3_upload_id.as_deref(),
-          &parts,
-        )
-        .await
-        .map_err(|e| {
-          warn!("Failed to cancel multipart upload for GC: {e}");
-        })
-        .is_err()
+    for upload in uploads {
+      // Only unset if reserve died between creating the row and the S3 upload,
+      // in which case there is nothing to abort.
+      if let Some(upload_id) = &upload.s3_upload_id
+        && storage
+          .cancel_multipart_upload(&StoragePath::from(upload.file_id.to_string()), upload_id)
+          .await
+          .map_err(|e| {
+            warn!("Failed to cancel multipart upload for GC: {e}");
+          })
+          .is_err()
       {
         continue;
       }

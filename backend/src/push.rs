@@ -5,7 +5,13 @@ use axum::{
   routing::{patch, post},
 };
 use axum_extra::{TypedHeader, headers::ContentRange};
-use centaurus::{bail, db::init::Connection, error::Result, storage::FileStorage};
+use centaurus::{
+  bail,
+  db::init::Connection,
+  error::{ErrorReportStatusExt, Result},
+  storage::{FileStorage, StoragePath},
+};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::{auth::Auth, db::DBTrait, storage::StorageExt};
@@ -61,14 +67,12 @@ async fn reserve(
     .await?;
 
   let upload_id = storage
-    .create_multipart_upload(&file_id.to_string())
+    .create_multipart_upload(&StoragePath::from(file_id.to_string()))
     .await?;
 
-  if let Some(upload_id) = upload_id {
-    db.cache_upload()
-      .set_s3_upload_id(cache_id, upload_id)
-      .await?;
-  }
+  db.cache_upload()
+    .set_s3_upload_id(cache_id, upload_id)
+    .await?;
 
   Ok(Json(ReserveResponse { cache_id }))
 }
@@ -76,6 +80,14 @@ async fn reserve(
 #[derive(Deserialize)]
 struct UploadChunkPath {
   id: i32,
+}
+
+/// Only unset if `reserve` died between creating the row and the S3 upload.
+fn upload_id(upload: &entity::cache_upload::Model) -> Result<String> {
+  upload.s3_upload_id.clone().status_context(
+    StatusCode::INTERNAL_SERVER_ERROR,
+    "Cache upload has no S3 upload ID",
+  )
 }
 
 async fn upload_chunk(
@@ -105,16 +117,14 @@ async fn upload_chunk(
 
   let etag = storage
     .upload_part(
-      &upload.file_id.to_string(),
-      upload.s3_upload_id.as_deref(),
+      &StoragePath::from(upload.file_id.to_string()),
+      &upload_id(&upload)?,
       chunk.part_number,
       req,
     )
     .await?;
 
-  if let Some(etag) = etag {
-    db.cache_upload().update_etag(chunk.id, etag).await?;
-  }
+  db.cache_upload().update_etag(chunk.id, etag).await?;
 
   db.cache_upload().refresh_created_at(path.id).await?;
 
@@ -155,8 +165,8 @@ async fn commit(
 
   storage
     .complete_multipart_upload(
-      &upload.file_id.to_string(),
-      upload.s3_upload_id.as_deref(),
+      &StoragePath::from(upload.file_id.to_string()),
+      &upload_id(&upload)?,
       parts,
     )
     .await?;

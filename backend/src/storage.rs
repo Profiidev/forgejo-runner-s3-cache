@@ -1,14 +1,9 @@
-use aws_sdk_s3::primitives::ByteStream;
 use axum::body::Bytes;
 use centaurus::{
-  bail,
   error::{ErrorReportStatusExt, Result},
-  eyre::Context,
-  storage::FileStorage,
+  storage::{FileStorage, MultipartStore, PartId, StoragePath},
 };
 use http::StatusCode;
-use tokio::{fs, io};
-use tracing::warn;
 
 pub struct UploadPart {
   pub part_number: i32,
@@ -16,181 +11,97 @@ pub struct UploadPart {
   pub size: i64,
 }
 
+/// S3 numbers parts from 1, the `MultipartStore` API from 0.
+fn part_idx(part_number: i32) -> usize {
+  part_number as usize - 1
+}
+
 pub trait StorageExt {
-  async fn create_multipart_upload(&self, key: &str) -> Result<Option<String>>;
+  fn multipart_store(&self) -> Result<&dyn MultipartStore>;
+  async fn create_multipart_upload(&self, key: &StoragePath) -> Result<String>;
   async fn upload_part(
     &self,
-    key: &str,
-    upload_id: Option<&str>,
+    key: &StoragePath,
+    upload_id: &str,
     part_number: i32,
     data: Bytes,
-  ) -> Result<Option<String>>;
+  ) -> Result<String>;
   async fn complete_multipart_upload(
     &self,
-    key: &str,
-    upload_id: Option<&str>,
+    key: &StoragePath,
+    upload_id: &str,
     parts: Vec<UploadPart>,
   ) -> Result<()>;
-  async fn cancel_multipart_upload(
-    &self,
-    key: &str,
-    upload_id: Option<&str>,
-    parts: &[i32],
-  ) -> Result<()>;
+  async fn cancel_multipart_upload(&self, key: &StoragePath, upload_id: &str) -> Result<()>;
 }
 
 impl StorageExt for FileStorage {
-  async fn create_multipart_upload(&self, key: &str) -> Result<Option<String>> {
-    match self {
-      FileStorage::Local(_) => Ok(None),
-      FileStorage::S3 { client, bucket } => {
-        let multipart_upload = client
-          .create_multipart_upload()
-          .bucket(bucket)
-          .key(key)
-          .send()
-          .await
-          .context("Faield to create multipart upload for file in S3 Bucket")?;
+  /// Always present in practice: the config panics unless S3 is configured.
+  fn multipart_store(&self) -> Result<&dyn MultipartStore> {
+    self.multipart().status_context(
+      StatusCode::INTERNAL_SERVER_ERROR,
+      "Storage backend has no multipart API",
+    )
+  }
 
-        let upload_id = multipart_upload.upload_id.status_context(
-          StatusCode::INTERNAL_SERVER_ERROR,
-          "Failed to get upload ID from S3 multipart upload response",
-        )?;
-
-        Ok(Some(upload_id))
-      }
-    }
+  async fn create_multipart_upload(&self, key: &StoragePath) -> Result<String> {
+    Ok(self.multipart_store()?.create_multipart(key).await?)
   }
 
   async fn upload_part(
     &self,
-    key: &str,
-    upload_id: Option<&str>,
+    key: &StoragePath,
+    upload_id: &str,
     part_number: i32,
     data: Bytes,
-  ) -> Result<Option<String>> {
-    match (self, upload_id) {
-      (FileStorage::Local(path), None) => {
-        let file_path = path.join(format!("{key}-{part_number}"));
-        fs::write(&file_path, &data).await?;
+  ) -> Result<String> {
+    let part = self
+      .multipart_store()?
+      .put_part(
+        key,
+        &upload_id.to_string(),
+        part_idx(part_number),
+        data.into(),
+      )
+      .await?;
 
-        Ok(None)
-      }
-      (FileStorage::S3 { client, bucket }, Some(upload_id)) => {
-        let part = client
-          .upload_part()
-          .bucket(bucket)
-          .key(key)
-          .upload_id(upload_id)
-          .part_number(part_number)
-          .body(ByteStream::from(data))
-          .send()
-          .await
-          .context("Failed to upload part to S3")?;
-
-        let etag = part.e_tag.status_context(
-          StatusCode::INTERNAL_SERVER_ERROR,
-          "Failed to get ETag from S3 upload part response",
-        )?;
-
-        Ok(Some(etag))
-      }
-      _ => bail!("Invalid storage configuration for multipart upload"),
-    }
+    Ok(part.content_id)
   }
 
   async fn complete_multipart_upload(
     &self,
-    key: &str,
-    upload_id: Option<&str>,
+    key: &StoragePath,
+    upload_id: &str,
     mut parts: Vec<UploadPart>,
   ) -> Result<()> {
     parts.sort_unstable_by_key(|part| part.part_number);
 
-    match (self, upload_id) {
-      (FileStorage::Local(path), None) => {
-        let mut file = fs::File::create(path.join(key)).await?;
+    let parts = parts
+      .into_iter()
+      .map(|part| {
+        Ok(PartId {
+          content_id: part.etag.status_context(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Cache upload part was never uploaded",
+          )?,
+        })
+      })
+      .collect::<Result<Vec<_>>>()?;
 
-        for part in parts {
-          let part_path = path.join(format!("{key}-{}", part.part_number));
-          let mut part = fs::File::open(&part_path).await?;
-          io::copy(&mut part, &mut file).await?;
-          drop(part);
-          fs::remove_file(part_path).await?;
-        }
+    self
+      .multipart_store()?
+      .complete_multipart(key, &upload_id.to_string(), parts)
+      .await?;
 
-        Ok(())
-      }
-      (FileStorage::S3 { client, bucket }, Some(upload_id)) => {
-        let completed_parts = parts
-          .into_iter()
-          .map(|part| {
-            aws_sdk_s3::types::CompletedPart::builder()
-              .set_e_tag(part.etag)
-              .part_number(part.part_number)
-              .build()
-          })
-          .collect();
-
-        client
-          .complete_multipart_upload()
-          .bucket(bucket)
-          .key(key)
-          .upload_id(upload_id)
-          .multipart_upload(
-            aws_sdk_s3::types::CompletedMultipartUpload::builder()
-              .set_parts(Some(completed_parts))
-              .build(),
-          )
-          .send()
-          .await
-          .context("Failed to complete multipart upload in S3")?;
-
-        Ok(())
-      }
-      _ => bail!("Invalid storage configuration for completing multipart upload"),
-    }
+    Ok(())
   }
 
-  async fn cancel_multipart_upload(
-    &self,
-    key: &str,
-    upload_id: Option<&str>,
-    parts: &[i32],
-  ) -> Result<()> {
-    match (self, upload_id) {
-      (FileStorage::Local(path), None) => {
-        for part_number in parts {
-          let part_path = path.join(format!("{key}-{part_number}"));
-          if part_path.exists() {
-            fs::remove_file(part_path).await?;
-          }
-        }
+  async fn cancel_multipart_upload(&self, key: &StoragePath, upload_id: &str) -> Result<()> {
+    self
+      .multipart_store()?
+      .abort_multipart(key, &upload_id.to_string())
+      .await?;
 
-        // also remove the final file if it exists, since the upload is cancelled
-        let file_path = path.join(key);
-        if file_path.exists() {
-          fs::remove_file(file_path).await?;
-        }
-
-        Ok(())
-      }
-      (FileStorage::S3 { client, bucket }, Some(upload_id)) => {
-        let _ = client
-          .abort_multipart_upload()
-          .bucket(bucket)
-          .key(key)
-          .upload_id(upload_id)
-          .send()
-          .await
-          .context("Failed to abort multipart upload in S3");
-
-        Ok(())
-      }
-      _ => {
-        warn!("Invalid storage configuration for cancelling multipart upload");
-        Ok(())
-      }
-    }
+    Ok(())
   }
 }

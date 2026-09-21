@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-centaurus = { version = "0.17.0", features = [
+centaurus = { version = "0.17.4", features = [
   "backend",
   "logging",
   "storage",
@@ -28,7 +28,6 @@ hyper-util = { version = "0.1.20", features = ["client-legacy"] }
 hmac = "0.13.0"
 sha2 = "0.11.0"
 hex = "0.4.3"
-aws-sdk-s3 = { version = "1.129.0", features = ["behavior-version-latest"] }
 chrono = "0.4.44"
 
 [[bin]]
