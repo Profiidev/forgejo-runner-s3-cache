@@ -144,15 +144,11 @@ impl<'db> CacheUploadTable<'db> {
   pub async fn find_incomplete_uploads(
     &self,
     before: DateTime,
-  ) -> Result<Vec<(cache_upload::Model, Vec<i32>)>> {
+  ) -> Result<Vec<cache_upload::Model>> {
     let entries = cache_upload::Entity::find()
       .filter(cache_upload::Column::CreatedAt.lt(before))
-      .find_with_related(cache_upload_part::Entity)
       .all(self.db)
-      .await?
-      .into_iter()
-      .map(|(upload, parts)| (upload, parts.iter().map(|p| p.part_number).collect()))
-      .collect();
+      .await?;
 
     Ok(entries)
   }

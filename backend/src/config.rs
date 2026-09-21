@@ -53,6 +53,10 @@ impl Config {
 
     config.storage.validate();
 
+    if !config.storage.use_s3() {
+      panic!("S3 storage is not enabled");
+    }
+
     if config.cache_secret.is_empty() {
       panic!("Cache secret is not set");
     }
