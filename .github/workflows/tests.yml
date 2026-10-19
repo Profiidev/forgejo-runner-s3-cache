@@ -1,0 +1,58 @@
+name: Tests
+on:
+  pull_request:
+
+jobs:
+  backend_test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          components: clippy,rustfmt
+
+      - name: Cache cargo and rust files
+        id: rust_cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          cache-on-failure: true
+          shared-key: "backend_test_cache"
+
+      - uses: taiki-e/install-action@badb8c3638e0b773c6c17a6025c2306a8f1c4303 # nextest
+      - name: "Backend Test"
+        run: cd backend && cargo nextest run --nff
+
+      - name: Upload Test Result File
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: test-results-backend
+          path: ${{ github.workspace }}/target/nextest/default/junit-backend.xml
+          retention-days: 5
+
+  comment_results:
+    name: Comment Results to PR
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - backend_test
+    steps:
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        id: app-token
+        with:
+          client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
+      - name: Download Test Results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: test-results-*
+          merge-multiple: true
+          path: test-results
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2
+        if: always()
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          files: |
+            test-results/**/*.xml
