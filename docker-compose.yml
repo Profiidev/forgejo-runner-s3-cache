@@ -46,7 +46,7 @@ services:
       - nginx
 
   gitea:
-    image: "data.forgejo.org/forgejo/runner:12.10.2@sha256:379b324d6942824b7487706c0a06be4d63e546c17b62bece4ae18c74364a8fae"
+    image: "data.forgejo.org/forgejo/runner:12.13.2@sha256:eb6e7bc21973382d261e6eb883dbd27b8cb56939d33a3bfd79a1352b7f9a33a0"
     links:
       - docker-in-docker
     depends_on:
