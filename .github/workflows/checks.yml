@@ -10,26 +10,26 @@ jobs:
       checks: write
       contents: write
     steps:
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         id: app-token
         if: github.event.pull_request.head.repo.full_name == github.repository
         with:
           client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
           private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           components: clippy,rustfmt
 
       - name: Cache cargo and rust files
         id: rust_cache
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           cache-on-failure: true
           shared-key: "linter_cache"
 
       - name: Run linters
-        uses: profiidev/rust-lint-action@7185d73733d1ab71a15c74934a2349622ad60740 # v4
+        uses: profiidev/rust-lint-action@16801b02ca2bc0441e458d7f713d8a0e8d417927 # v4
         with:
           rustfmt: true
           clippy: true
@@ -41,7 +41,7 @@ jobs:
 
       - name: Upload lint results
         if: always() && github.event.pull_request.head.repo.full_name != github.repository
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: lint-results
           path: lint-results.json
