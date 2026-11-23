@@ -49,4 +49,4 @@ jobs:
           commit: ${{ github.event.workflow_run.head_sha }}
           event_file: event.json
           event_name: ${{ github.event.workflow_run.event }}
-          files: artifacts/test-results*/**/*.xml
+          files: artifacts/**/*.xml
