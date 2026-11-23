@@ -7,15 +7,16 @@ jobs:
     name: Run linters
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       checks: write
       contents: write
     steps:
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+      - uses: profiidev/gluon@d715c4a8bd804db764307ad041e73c1c60ec7382 # v0
         id: app-token
         if: github.event.pull_request.head.repo.full_name == github.repository
         with:
-          client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
+          url: https://gluon.profidev.io
+          profile: lint
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:

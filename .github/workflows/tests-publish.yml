@@ -11,15 +11,16 @@ jobs:
     # Never check out or run code from the PR here, this job has a write token
     if: github.event.workflow_run.conclusion != 'skipped'
     permissions:
+      id-token: write
       actions: read
       checks: write
       pull-requests: write
     steps:
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+      - uses: profiidev/gluon@d715c4a8bd804db764307ad041e73c1c60ec7382 # v0
         id: app-token
         with:
-          client-id: ${{ secrets.COMMIT_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.COMMIT_BOT_PRIVATE_KEY }}
+          url: https://gluon.profidev.io
+          profile: publish
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
@@ -27,11 +28,25 @@ jobs:
           github-token: ${{ github.token }}
           path: artifacts
 
+      # Never use the triggering run's event file: a fork controls it.
+      # Rebuild it from the API, bound to the trusted head SHA.
+      - name: Build event file
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD: ${{ github.event.workflow_run.head_repository.owner.login }}:${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          pr=$(gh api -X GET "repos/$REPO/pulls" -f head="$HEAD" -f state=open \
+            --jq "[.[] | select(.head.sha == \"$SHA\")][0]")
+          jq -n --argjson pr "${pr:-null}" --slurpfile ev "$GITHUB_EVENT_PATH" \
+            '{pull_request: $pr, repository: $ev[0].repository}' > event.json
+
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@7622c5bf3d112a72ab4fa3951c2aa5723d8ab92d # v2
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           commit: ${{ github.event.workflow_run.head_sha }}
-          event_file: artifacts/event-file/event.json
+          event_file: event.json
           event_name: ${{ github.event.workflow_run.event }}
           files: artifacts/test-results*/**/*.xml
