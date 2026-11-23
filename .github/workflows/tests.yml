@@ -30,15 +30,3 @@ jobs:
           name: test-results-backend
           path: ${{ github.workspace }}/target/nextest/default/junit-backend.xml
           retention-days: 5
-
-  # Test results are published by tests-publish.yml, which also works for PRs from forks
-  event_file:
-    name: Upload Event File
-    runs-on: ubuntu-latest
-    steps:
-      - name: Upload Event File
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with:
-          name: event-file
-          path: ${{ github.event_path }}
-          retention-days: 5
